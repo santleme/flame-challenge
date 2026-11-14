@@ -1,0 +1,34 @@
+{
+  "generated": "build_nasa_knowledge_base.py",
+  "experimentCount": 8,
+  "psiIds": [
+    "sofie-gel",
+    "bass-ii",
+    "flex-2",
+    "acme",
+    "saffire",
+    "same",
+    "confined-combustion",
+    "flare"
+  ],
+  "scenarioIds": [
+    "apollo-1",
+    "apollo-13",
+    "mir-1997"
+  ],
+  "techIds": [
+    "fire-detector",
+    "firemans-air-tanks",
+    "fire-attire"
+  ],
+  "bySource": {
+    "sofie": 1,
+    "bass": 1,
+    "flex": 1,
+    "acme": 1,
+    "saffire": 1,
+    "same": 1,
+    "confined": 1,
+    "flare": 1
+  }
+}
