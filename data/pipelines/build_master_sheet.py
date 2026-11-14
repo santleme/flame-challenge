@@ -119,7 +119,7 @@ def material_rows(inp: dict) -> list[dict]:
         r["name"] = m["name"]
         r["material_id"] = m["id"]
         r["fuel_or_material"] = m["name"]
-        src_invs = [s for s in m.get("sourceInvestigations", []) if s != "same" or True]
+        src_invs = [s for s in m.get("sourceInvestigations", []) if s != "same"]
         r["investigation_id"] = src_invs[0] if src_invs else ""
         # LOC and its provenance come from the same source — the fitted
         # risk-model entry when present, else the calibrated default —

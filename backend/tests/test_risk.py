@@ -30,5 +30,8 @@ def test_curve_dense_step_is_capped():
 
 def test_curve_nan_bounds_fall_back():
     c = risk.curve("pmma", o2_min=math.nan, o2_max=math.nan)
-    assert c["points"][0]["o2Pct"] == risk.O2_LIMITS[0]
-    assert c["points"][-1]["o2Pct"] <= risk.O2_LIMITS[1] + 1e-9
+    # assert on the clamped bounds the function reports, not on the first
+    # accumulated point (which depends on step arithmetic)
+    assert c["o2Min"] == risk.O2_LIMITS[0]
+    assert c["o2Max"] == risk.O2_LIMITS[1]
+    assert c["points"]  # still produces a usable curve

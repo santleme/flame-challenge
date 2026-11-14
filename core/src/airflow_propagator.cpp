@@ -12,9 +12,9 @@ void SolidSpread::configure(const Config& cfg) {
 }
 
 void SolidSpread::updateAtmosphere(double o2Pct, double flowCms, double pressureKpa) {
-    c_.o2Pct = o2Pct;
-    c_.flowCms = flowCms;
-    c_.pressureKpa = pressureKpa;
+    c_.o2Pct = std::clamp(o2Pct, 0.0, 100.0);
+    c_.flowCms = std::max(0.0, flowCms);
+    c_.pressureKpa = std::max(0.0, pressureKpa);
 }
 
 double SolidSpread::nominalRate() const {
@@ -50,9 +50,12 @@ void SolidSpread::step(double dtSec) {
                 s_.regime = Regime::Out;
             } else {
                 // enter Spreading with a consistent first-frame state —
-                // callers must never observe the regime with a zero rate
+                // callers must never observe the regime with a zero rate,
+                // and the front must not stall for a tick
                 s_.regime = Regime::Spreading;
                 s_.spreadRateCms = nominalRate();
+                s_.frontPosCm += s_.spreadRateCms * dtSec;
+                s_.burnLengthCm = std::min(s_.frontPosCm, c_.slabLengthCm);
                 s_.intensity = std::clamp(
                     0.3 + s_.spreadRateCms / c_.material.spreadMaxCms, 0.0, 1.0);
             }

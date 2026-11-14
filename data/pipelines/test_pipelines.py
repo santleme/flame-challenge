@@ -54,6 +54,24 @@ def test_explicit_extinction_text_wins():
     assert etype == "oxygen-limit"
 
 
+def test_negated_extinction_words_do_not_count():
+    # "no extinction observed" must not produce outcome=extinction
+    out, _, _ = norm.classify_outcome(
+        "burned to completion; no extinction observed", 0.0)
+    assert out == "burnout"
+
+
+def test_extinguisher_equipment_is_not_extinction():
+    out, _, _ = norm.classify_outcome(
+        "a fire extinguisher was staged nearby for safety", None)
+    assert out == "unknown"
+
+
+def test_completion_comment_beats_dext_sentinel():
+    out, _, _ = norm.classify_outcome("droplet burned to completion", 0.0)
+    assert out == "burnout"
+
+
 # ---- cool-flame negation awareness ----
 
 @pytest.mark.parametrize("text", [
@@ -61,6 +79,10 @@ def test_explicit_extinction_text_wins():
     "No cool flame detected.",
     "A cool flame was not observed.",
     "cool flame not formed during the test",
+    "no evidence of a cool flame was found",
+    "without a cool flame the droplet went out",
+    "cool flame was never observed",
+    "droplet never had a cool flame",
 ])
 def test_negated_cool_flame_is_negative(text):
     assert norm.cool_flame_observed(text) is False
@@ -71,6 +93,8 @@ def test_negated_cool_flame_is_negative(text):
     "second-stage cool flame visible",
     "a cool-flame regime followed the hot burn",
     "No ignition occurred; a cool flame followed.",
+    "no ignition and a cool flame",
+    "cool flame no more than 2 s visible",
 ])
 def test_affirmative_cool_flame_is_positive(text):
     assert norm.cool_flame_observed(text) is True

@@ -135,28 +135,42 @@ def fuel_id(name: str | None) -> str | None:
     return re.sub(r"[^a-z0-9]+", "-", n).strip("-") or None
 
 
-def cool_flame_observed(text: str) -> bool:
-    """Affirmative cool-flame evidence in free text.
+def _affirmative_mention(text: str, pattern: str) -> bool:
+    """True when `pattern` is mentioned affirmatively.
 
-    Explicit negative observations ("No cool flame detected.", "cool flame
-    was not observed") do NOT count — a recorded non-observation is real
-    evidence, not a positive detection.
+    Explicit negative observations ("No cool flame detected.", "no evidence
+    of a cool flame", "cool flame was not observed") do NOT count — a
+    recorded non-observation is real evidence, not a positive detection.
+    Negation scopes only within the current clause and cannot jump a
+    conjunction ("no ignition and a cool flame" is affirmative).
     """
-    for m in re.finditer(r"cool[ -]?flames?", text, re.IGNORECASE):
-        # negation scopes only within the current clause and when it
-        # directly precedes the mention ("No cool flame", "no evidence of
-        # cool flame") — not across ";" boundaries ("No ignition occurred;
-        # a cool flame followed")
+    for m in re.finditer(pattern, text, re.IGNORECASE):
+        # scan back to the nearest clause boundary — "No ignition occurred;
+        # a cool flame followed" must not carry the "No" across ";"
         seg = re.split(r"[.!?;:]", text[max(0, m.start() - 60):m.start()])[-1]
+        # a negation word ending the clause up to 4 words back counts, but
+        # conjunctions sever it ("no ignition and a cool flame" is positive)
         if re.search(r"\b(?:no|not|never|without|absent|none)\b"
-                     r"(?:\s+\w+){0,2}\s*$", seg, re.IGNORECASE):
+                     r"(?:\s+(?!and|but|or)\w+){0,4}\s*$", seg, re.IGNORECASE):
             continue                                   # negated mention
         head = " ".join(text[m.end():m.end() + 60].lower().split()[:4])
         if re.match(r"[\s,;:()\-]*(?:was|were|is|has been|could be|"
-                    r"seemed|appeared|remained)?\s*not\b", head):
+                    r"seemed|appeared|remained)?\s*(?:not|never)\b", head):
             continue             # "cool flame was not ..." / ", not ..."
         return True
     return False
+
+
+# extinction language excluding the nouns for suppression equipment —
+# "extinguisher"/"extinguishant" are not extinction observations
+_EXTINCTION_WORDS = (
+    r"\b(?:extinct|extinction|extinguished|extinguishes|extinguishing|"
+    r"extinguishment)\b")
+
+
+def cool_flame_observed(text: str) -> bool:
+    """Affirmative cool-flame evidence in free text."""
+    return _affirmative_mention(text, r"cool[ -]?flames?")
 
 
 def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str, bool]:
@@ -170,10 +184,11 @@ def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str,
         return "extinction", "radiative", cool
     if re.search(r"blow.?off|blows? out", c):
         return "extinction", "blow-off", cool
-    # a positive measured extinction diameter is direct evidence; Dext=0.00
-    # is the FLEX sentinel for "no extinction observed" (data dictionary),
-    # NOT an extinction — completed burns record zero.
-    if re.search(r"extin[gc]", c) or (isinstance(dext, float) and dext > 0):
+    # affirmative extinction language only — "no extinction observed",
+    # "fire extinguisher present" and negated mentions must not count;
+    # a positive measured Dext is direct evidence on its own
+    if _affirmative_mention(c, _EXTINCTION_WORDS) or \
+            (isinstance(dext, float) and dext > 0):
         if cool:
             return "extinction", "cool-flame", True
         return "extinction", "oxygen-limit" if "oxygen" in c else "suppressant" \
@@ -182,6 +197,8 @@ def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str,
         return "disruption", "none", cool
     if re.search(r"burn(ed|s|t)? (to completion|completely|out)|complete burn", c):
         return "burnout", "none", cool
+    # Dext=0.00 is the FLEX sentinel for "no extinction observed" (data
+    # dictionary), NOT an extinction — completed burns record zero
     if isinstance(dext, float) and dext == 0:
         return "burnout", "none", cool
     return "unknown", "none", cool

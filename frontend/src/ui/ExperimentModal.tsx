@@ -51,11 +51,19 @@ export default function ExperimentModal({ engine, roomId, onClose }: Props) {
   useEffect(() => {
     let live = true
     const timer = setTimeout(() => {
-      previewExperiment(inv, o2, flow).then((p) => {
-        if (!live) return
-        setPhysics(p.engine)
-        setPreview({ invId: inv.id, o2, flow, pressure: p.ignitionPressure })
-      })
+      previewExperiment(inv, o2, flow)
+        .then((p) => {
+          if (!live) return
+          setPhysics(p.engine)
+          setPreview({ invId: inv.id, o2, flow, pressure: p.ignitionPressure })
+        })
+        .catch(() => {
+          // a failed preview must not surface as an unhandled rejection or
+          // leave a stale pressure bound — fall back to the local model
+          if (!live) return
+          setPhysics('local')
+          setPreview(undefined)
+        })
     }, 180)
     return () => {
       live = false

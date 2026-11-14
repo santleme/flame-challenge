@@ -3,7 +3,7 @@ import { BALANCE, GRID_H, GRID_W, ROOM_SPECS, mulberry32 } from './config'
 import { crewName } from './names'
 import { findPath } from './pathfind'
 import { isWalkable, igniteRoom, roomAt, updateFires } from './fire'
-import { musterPoint, pathTo, roomSpot, updateCrewMember } from './crew'
+import { musterPoint, pathTo, releaseExperiment, roomSpot, updateCrewMember } from './crew'
 import { citation, flowRange, o2Range, rollsHidden, specFor } from './experiments'
 import { applyScenario, SCENARIOS } from './scenarios'
 import { applyPreset, PRESETS } from './presets'
@@ -357,12 +357,15 @@ export class Engine {
 
     for (const c of e.crew) {
       if (c.state === 'dead' || c.state === 'fleeing' || c.state === 'resting') continue
-      // injured → forced rest
+      // injured → forced rest (release any experiment reservation now —
+      // waiting for next tick's stale-reservation sweep would strand the
+      // run on a scientist who is no longer working it)
       if (c.health < 45 && c.job?.kind !== 'rest') {
         const q =
           e.rooms.find((r) => r.type === 'quarters' && r.state === 'active') ??
           e.rooms.find((r) => r.type === 'dock')
         if (q) {
+          releaseExperiment(e, c)
           c.job = { kind: 'rest', roomId: q.id }
           c.state = 'injured'
           c.path = []
