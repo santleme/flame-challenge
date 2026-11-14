@@ -61,6 +61,19 @@ def test_preview_flow_pressure_ranges(field, bad):
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize("field", ["o2Pct", "flowCms", "pressureKpa"])
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_numeric_non_finite_input_is_422_not_500(field, value):
+    """Bodies like {"flowCms": 1e309} decode to non-finite floats — the
+    422 error payload echoes the input and must still serialize."""
+    payload = {"investigationId": "saffire", "o2Pct": 21, field: value}
+    r = client.post("/api/chamber/preview",
+                    content=json.dumps(payload).encode(),
+                    headers={"content-type": "application/json"})
+    assert r.status_code == 422
+    assert r.json()["detail"]
+
+
 def test_risk_post_and_get_validation():
     assert client.post("/api/risk", json={
         "materialId": "pmma", "o2Pct": 21.0, "flowCms": 0.0}).status_code == 200
@@ -69,6 +82,7 @@ def test_risk_post_and_get_validation():
         r = client.post("/api/risk", json={"materialId": "pmma", **body})
         assert r.status_code == 422, body
     assert client.get("/api/risk", params={"o2Pct": "nan"}).status_code == 422
+    assert client.get("/api/risk", params={"o2Pct": "1e309"}).status_code == 422
     assert client.get("/api/risk",
                       params={"o2Pct": 21.0, "flowCms": -2}).status_code == 422
     assert client.get("/api/risk",
@@ -121,6 +135,21 @@ def test_fallback_chamber_droplet_run_terminates():
     assert st["model"] == "droplet"
     assert st["finished"] is True
     assert st["burnFraction"] == pytest.approx(1.0, abs=1e-2)
+
+
+def test_fallback_chambers_do_not_share_caller_config():
+    """configure() must copy cfg (the C++ engine takes Config by value) —
+    one chamber's update_atmosphere cannot leak into another."""
+    cfg = fb.ChamberConfig(materialId="pmma", model="spread",
+                           o2Pct=21.0, flowCms=5.0)
+    risks = fb.MaterialRisk()
+    a, b = fb.Chamber(risks), fb.Chamber(risks)
+    a.configure(cfg)
+    b.configure(cfg)
+    before = b.ignition_pressure()
+    a.update_atmosphere(0.0, 0.0, 101.0)
+    assert cfg.o2Pct == 21.0          # caller's object untouched
+    assert b.ignition_pressure() == pytest.approx(before)
 
 
 def test_fallback_matches_cpp_engine_when_built():

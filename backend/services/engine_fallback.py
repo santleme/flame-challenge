@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 T_FLAME_MAX = 2300.0  # K — adiabatic flame temperature envelope
 T_COOL_FLAME = 800.0  # K — cool flames sit ~500–800 K
@@ -355,7 +355,9 @@ class Chamber:
         self._events: list[str] = []
 
     def configure(self, cfg: ChamberConfig) -> None:
-        self._cfg = cfg
+        # C++ copies the Config by value — two chambers must not share the
+        # caller's object, or update_atmosphere on one corrupts the other.
+        self._cfg = replace(cfg)
         self._use_droplet = cfg.model == "droplet"
         mat = self._risks.table.get(cfg.materialId) or self._FALLBACK_MATERIAL
         if self._use_droplet:

@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -40,6 +43,27 @@ _SEED = {"ge": 0, "le": 4_294_967_295}  # C++ unsigned int
 def unknown_investigation(_: Request,
                           exc: eb.UnknownInvestigationError) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+def _json_safe(value):
+    """Replace non-finite floats recursively so the payload serializes —
+    a rejected `1e309`/`NaN` input would otherwise turn the 422 into a 500."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    # same shape as FastAPI's default 422 handler, but sanitized
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder({"detail": _json_safe(exc.errors()),
+                                  "body": _json_safe(exc.body)}))
 
 
 class PreviewReq(BaseModel):
