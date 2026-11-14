@@ -35,8 +35,13 @@ class UnknownInvestigationError(LookupError):
 _risks = fe.MaterialRisk()
 _cal: dict = {"materials": [], "investigations": {}}
 if CALIBRATION.exists():
-    _cal = json.loads(CALIBRATION.read_text())
-    _risks.load_json(json.dumps({"materials": _cal.get("materials", [])}))
+    try:
+        raw = json.loads(CALIBRATION.read_text())
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    if isinstance(raw, dict):
+        _cal = raw
+        _risks.load_json(json.dumps({"materials": raw.get("materials", [])}))
 
 
 def materials() -> list[dict]:
@@ -93,7 +98,9 @@ def make_chamber(
     cfg.materialId = spec.get("materialId", "pmma")
     cfg.model = spec.get("model", "spread")
     cfg.o2Pct = float(o2_pct)
-    fr = spec.get("flowRangeCms", [0, 10])
+    fr = spec.get("flowRangeCms") or [0, 10]
+    if len(fr) < 2:
+        fr = list(fr) + [0] * (2 - len(fr))
     cfg.flowCms = float(flow_cms if flow_cms is not None else fr[1] * 0.5)
     cfg.pressureKpa = float(pressure_kpa if pressure_kpa is not None
                             else spec.get("pressureKpa", 101))
