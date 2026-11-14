@@ -214,17 +214,19 @@
       ],
       "data": {
         "availability": "full",
-        "psiUrl": "https://psi.nasa.gov/physci/repo/data/investigation/PSI-68"
+        "psiUrl": "https://psi.nasa.gov/physci/repo/data/investigation/PSI-39"
       },
       "publications": 45,
       "verified": true,
-      "psiRuns": 283,
+      "psiRuns": 299,
       "psiAccessions": [
+        "PSI-39",
         "PSI-68",
         "PSI-69"
       ],
       "psiFuels": [
         "Decane (pure)",
+        "Dodecane",
         "Ethanol (pure)",
         "Heptane",
         "Heptane (50%) IsoOctane (50%) (mixture)",
@@ -241,7 +243,7 @@
       ],
       "psiExtinctionLimitPct": {
         "min": 12.0,
-        "max": 30.0
+        "max": 34.0
       }
     },
     {
@@ -299,7 +301,7 @@
       },
       "publications": 60,
       "verified": true,
-      "psiRuns": 738,
+      "psiRuns": 629,
       "psiAccessions": [
         "PSI-10",
         "PSI-159",

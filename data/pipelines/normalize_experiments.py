@@ -717,6 +717,7 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
     if not path.exists():
         return []
     pairs = _flex_pairing()
+    seen: set[tuple] = set()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
@@ -726,7 +727,8 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
         comments = (r.get("comments") or "").strip()
         dext = _num1(r.get("dext_mm"))
         # resolved CIR-first pairing — never a bare sequence-number join
-        m = pairs.get((r.get("test_id") or "").strip())
+        tid = (r.get("test_id") or "").strip()
+        m = pairs.get(tid)
         burn_time = None
         if m is not None:
             # the summary row carries the authoritative end state — its
@@ -746,6 +748,22 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
         if (o2mf is None or o2mf == 0.0) and m is not None:
             o2mf = _mid(m.get("o2_mf_min"), m.get("o2_mf_max"))
         atm = _num1(r.get("pressure_atm"))
+        # corroborated duplicate sheets — the same experiment recorded
+        # twice (FLEX-127/128: same CIR, GMT, fuel and measurements, both
+        # resolving to '127; C13M301') must emit once; sheets with
+        # different corroborating metadata are genuinely distinct runs
+        dup_key = (
+            (m or {}).get("data_id") or (r.get("cir_test_number") or tid),
+            _point_gmt(r), _fuel_key(fuel),
+            (r.get("o2_mf") or "").strip(), (r.get("d0_mm") or "").strip(),
+            (r.get("kavg_mm2_s") or "").strip(),
+            (r.get("dext_mm") or "").strip(),
+            (r.get("pressure_atm") or "").strip(),
+            (r.get("fiber") or "").strip(),
+        )
+        if dup_key in seen:
+            continue
+        seen.add(dup_key)
         out.append({
             "run_id": (r.get("test_id") or "").strip() or f"{acc}-tp",
             "accession": acc,

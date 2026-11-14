@@ -639,6 +639,33 @@ def test_flex_shared_cir_pairs_by_test_number(monkeypatch, tmp_path):
     assert by_id["FLEX-073"]["burn_time_s"] == 1.5
 
 
+def test_flex_duplicate_sheets_emit_once(monkeypatch, tmp_path):
+    """FLEX-127/128 are the same experiment recorded twice — same CIR,
+    GMT, fuel and measurements, both resolving to '127; C13M301'.
+    Collapse corroborated duplicates; sheets with different recorded
+    values are distinct runs and must be preserved."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "127; C13M301",
+         "fuel_or_material": "Methanol", "burn_time_s": "11.0",
+         "extra_json": json.dumps(
+             {"Test GMT": "19:22:49", "Test end": "Extinction"})},
+    ])
+    sheet = {"accession": "PSI-69", "cir_test_number": "C13M301",
+             "test_time": "19:22:49 (GMT)", "fuel_or_material": "Methanol",
+             "o2_mf": "0.17", "d0_mm": "3.22", "kavg_mm2_s": "0.38",
+             "dext_mm": "2.53", "pressure_atm": "0.71", "fiber": "Yes",
+             "comments": "radiative extinction"}
+    _flex_points_csv(tmp_path, [
+        dict(sheet, test_id="FLEX-127"),
+        dict(sheet, test_id="FLEX-128"),
+        dict(sheet, test_id="FLEX-129",
+             d0_mm="3.30", kavg_mm2_s="0.40"),
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = norm.parse_legacy_flex(set())
+    assert [p["run_id"] for p in pts] == ["FLEX-127", "FLEX-129"]
+
+
 def test_flex_point_placeholders_backfilled(monkeypatch, tmp_path):
     """FLEX-112/120/136 ship blank fuel and o2_mf=0.00 — the summary
     row holds the real values and must backfill them."""
