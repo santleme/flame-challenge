@@ -103,14 +103,19 @@ interface Row {
   verified: boolean
 }
 
+function tokens(text: string): Set<string> {
+  return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean))
+}
+
 const RUNS: Row[] = MASTER_ROWS.filter((r) => r.record_type === 'experiment_run').map((r) => {
   const matId = (r.material_id ?? '').toLowerCase()
   const fuel = r.fuel_or_material ?? ''
   let materialKey: string | null = matId || null
   if (!materialKey) {
-    const low = fuel.toLowerCase()
+    const fuelToks = tokens(fuel)
     for (const [key, aliases] of Object.entries(MATERIAL_ALIASES)) {
-      if (aliases.some((a) => low.includes(a))) {
+      // whole-token match only — 'ethane' must not catch inside 'methane'
+      if (aliases.some((a) => fuelToks.has(a))) {
         materialKey = key
         break
       }
@@ -137,9 +142,11 @@ function affinity(queryMat: string, rowMat: string | null, fuel: string): number
   const q = queryMat.toLowerCase()
   if (rowMat === q) return AFFINITY.exact
   const aliases = MATERIAL_ALIASES[q] ?? [q]
-  const low = fuel.toLowerCase()
-  if (aliases.some((a) => low.includes(a)) || aliases.some((a) => rowMat.includes(a)))
-    return AFFINITY.alias
+  // alias = same substance under another name; whole-token matching keeps
+  // distinct chemicals apart ('ethane' ≠ 'methane', 'ethanol' ≠ 'methanol')
+  if (aliases.includes(rowMat)) return AFFINITY.alias
+  const toks = new Set([...tokens(fuel), ...tokens(rowMat)])
+  if (aliases.some((a) => toks.has(a))) return AFFINITY.alias
   if (classOf(q).has(rowMat)) return AFFINITY.cls
   return AFFINITY.other
 }

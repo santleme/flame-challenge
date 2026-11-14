@@ -151,6 +151,9 @@ export interface DecisionOption {
   why: string
   /** engine-provided efficacy (0-100); when absent the UI scores the model locally */
   score?: number
+  /** countermeasure identifier — lets a click actually apply the action
+   *  to the replayed fire instead of only adopting its atmosphere */
+  action?: string
   model: {
     materialId: string
     o2Pct: number
@@ -192,7 +195,11 @@ export interface DecisionCard {
 export interface DecisionCardsPayload {
   engine: 'c++'
   chamber: {
+    /** resolved material — may differ from the requested id (unknown ids
+     *  fall back to the risk table's PMMA anchor) */
     materialId: string
+    /** material id the caller asked for, before resolution */
+    requestedMaterialId?: string
     o2Pct: number
     flowCms: number
     ignitionPressure: number

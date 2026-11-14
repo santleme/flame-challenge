@@ -39,10 +39,14 @@ export default function App() {
     [],
   )
 
-  /** decision card / replay chip — rebuild the yard and adopt its conditions */
+  /** decision card / replay chip — rebuild the yard, adopt its
+   *  conditions, then apply the option's countermeasure if it has one */
   const applyPreset = useCallback(
-    (id: string, patch: Partial<DashConditions>) => {
-      if (engine.loadPreset(id)) patchCond(patch)
+    (id: string, patch: Partial<DashConditions>, action?: string) => {
+      if (engine.loadPreset(id)) {
+        engine.applyCountermeasure(action)
+        patchCond(patch)
+      }
     },
     [patchCond],
   )

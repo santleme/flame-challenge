@@ -46,6 +46,24 @@ def test_deterministic():
     assert a == b
 
 
+def test_ethane_does_not_alias_methane():
+    """Substring matching must not treat 'ethane' inside 'methane' (or
+    'ethanol' inside 'methanol') as the same substance — aliases match on
+    chemical-name token boundaries."""
+    out = neighbors.nearest("ethane", 32.5, 0.0, k=3)
+    assert out
+    # top hit must be an actual ethane run, not a methane impostor
+    top_fuel = out[0]["fuel"].lower()
+    assert "methane" not in top_fuel
+    assert out[0]["materialKey"] in {"ethane", None} or "ethane" in top_fuel
+
+
+def test_ethanol_does_not_alias_methanol():
+    out = neighbors.nearest("ethanol", 21.0, 0.0, k=3)
+    for n in out:
+        assert "methanol" not in (n["fuel"] or "").lower()
+
+
 def test_k_is_bounded():
     assert len(neighbors.nearest("pmma", 21.0, k=0)) == 1
     assert len(neighbors.nearest("pmma", 21.0, k=99)) <= 10

@@ -67,6 +67,40 @@ def test_briefing_cites_nearest_run():
     assert top["runId"] in out["briefing"]
 
 
+def test_options_carry_countermeasure_actions():
+    """Every option must name its countermeasure so a click applies the
+    action instead of replaying the same untreated fire."""
+    out = tactics.decision_cards("cotton", 21.6, 20.0)
+    sup = _card(out["cards"], "suppression")
+    assert [o["action"] for o in sup["options"]] == [
+        "inert-gas", "water-mist", "monitor",
+    ]
+    air = _card(out["cards"], "containment")
+    assert len({o["action"] for o in air["options"]}) == 3
+
+
+def test_monitor_never_beats_real_suppression_on_hidden_fuel():
+    """Monitor-only is scored on detection adequacy — on a cool-flame
+    fuel it must rank strictly below both countermeasures."""
+    out = tactics.decision_cards("heptane", 17.0, 0.0)
+    sup = _card(out["cards"], "suppression")
+    scores = {o["action"]: o["score"] for o in sup["options"]}
+    assert scores["monitor"] < min(scores["inert-gas"], scores["water-mist"])
+
+
+def test_unfitted_material_resolves_chamber_fields():
+    """materialId=butane resolves to pmma inside risk_index — the chamber
+    block must quote the resolved material + pressure, not echo the
+    unrecognized id with a zeroed C++ lookup."""
+    from backend.api.main import api_decision_cards
+
+    out = api_decision_cards("butane", 21.0, 0.0)
+    assert out["chamber"]["materialId"] == out["material"]["materialId"]
+    assert out["chamber"]["materialId"] == "pmma"
+    assert out["chamber"]["requestedMaterialId"] == "butane"
+    assert out["chamber"]["ignitionPressure"] > 0
+
+
 def test_deterministic():
     a = tactics.decision_cards("pmma", 21.0, 10.0, "lunar")
     b = tactics.decision_cards("pmma", 21.0, 10.0, "lunar")

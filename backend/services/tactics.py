@@ -21,7 +21,6 @@ from backend.services import neighbors, risk
 # self-sustaining regimes degrade it.
 INERT_GAS_BASE = 0.80
 MIST_BASE = 0.85
-MONITOR_BASE_PENALTY = 1.4  # monitoring never suppresses — scales risk
 
 DISPLAY_NAME = {
     "saffire": "SAFFIRE",
@@ -82,7 +81,11 @@ def _briefing(r: dict, gravity: str, nb: list[dict]) -> str:
 def _suppression_scores(r: dict, cool: bool, smolder: bool, hidden: float) -> tuple[int, int, int]:
     inert = _pct((INERT_GAS_BASE - 0.25 * smolder - 0.10 * cool) / hidden * 100)
     mist = _pct((MIST_BASE - 0.05 * smolder) / hidden * 100)
-    monitor = _pct((1 - r["riskIndex"] * MONITOR_BASE_PENALTY) * 100)
+    # monitor-only is scored on DETECTION adequacy, not knock-down: hidden
+    # hazards eat it, high ambient risk degrades it — it can never beat a
+    # real countermeasure on a dangerous regime
+    detect = max(0.0, 1 - 0.5 * hidden - 0.30 * cool - 0.25 * smolder)
+    monitor = _pct(detect * (1 - 0.5 * r["riskIndex"]) * 100)
     return inert, mist, monitor
 
 
@@ -109,7 +112,8 @@ def decision_cards(
         if name not in sources:
             sources.append(name)
 
-    def opt(label: str, why: str, o2m: float, flowm: float, score: float | None = None) -> dict:
+    def opt(label: str, why: str, o2m: float, flowm: float,
+            action: str, score: float | None = None) -> dict:
         # no explicit score → efficacy = 1 - risk at the counterfactual point
         s = score if score is not None else (
             1 - _safe_index(mat, o2m, flowm, gravity)) * 100
@@ -117,6 +121,7 @@ def decision_cards(
             "label": label,
             "why": why,
             "score": _pct(s),
+            "action": action,
             "model": {"materialId": mat, "o2Pct": round(o2m, 2),
                       "flowCms": round(flowm, 2), "gravity": gravity},
         }
@@ -136,15 +141,15 @@ def decision_cards(
                     "starves oxidizer diffusion — SAFFIRE forced-flow regime collapses"
                     if flow >= 8 else
                     "drops the flame to its quiescent rate",
-                    o2, 0),
+                    o2, 0, "cut-vent"),
                 opt(f"Halve the flow ({round(flow / 2)} cm/s)",
                     "slow-propagation regime — smoke clearing retained",
-                    o2, flow / 2),
+                    o2, flow / 2, "halve-flow"),
                 opt(f"Keep forced flow ({round(flow)} cm/s)",
                     "duct-propagation speed — highest spread risk"
                     if flow >= 8 else
                     "current operating point",
-                    o2, flow),
+                    o2, flow, "keep-flow"),
             ],
             "sources": sources,
             "neighbors": nb,
@@ -158,13 +163,13 @@ def decision_cards(
             "options": [
                 opt(f"Hold {o2}% O₂",
                     "current margin — no action",
-                    o2, flow),
+                    o2, flow, "hold-o2"),
                 opt(f"Reduce toward LOC ({round(loc + 1, 1)}% O₂)",
                     "exploration-atmosphere target — margin shrinks to ~1 pt",
-                    loc + 1, flow),
+                    loc + 1, flow, "reduce-o2"),
                 opt(f"Drop below LOC ({round(loc - 0.5, 1)}% O₂)",
                     "ignition pressure collapses — the Apollo-1 lesson in reverse",
-                    loc - 0.5, flow),
+                    loc - 0.5, flow, "below-loc"),
             ],
             "sources": sources,
             "neighbors": nb,
@@ -179,15 +184,15 @@ def decision_cards(
                 opt("Inert-gas flood (N₂/CO₂)",
                     ("smolder-capable material — knock-down risks re-ignition"
                      if smolder else "displaces oxidizer at the seat"),
-                    o2, flow, inert),
+                    o2, flow, "inert-gas", inert),
                 opt("Water-mist cool",
                     ("penetrates the polymer — best against smolder pockets"
                      if smolder else "cools below re-ignition temperature"),
-                    o2, flow, mist),
+                    o2, flow, "water-mist", mist),
                 opt("Monitor-only protocol",
                     ("cool-flame fuels defeat optical clear — documented FLEX hazard"
                      if cool else "accept the burn and watch it"),
-                    o2, flow, monitor),
+                    o2, flow, "monitor", monitor),
             ],
             "sources": sources,
             "neighbors": nb,

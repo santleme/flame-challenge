@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import math
+import re
 import threading
 from pathlib import Path
 
@@ -95,14 +96,22 @@ def _class_of(material_key: str) -> set[str]:
     return LIQUID
 
 
+TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
+
+
+def _tokens(text: str) -> set[str]:
+    return {t for t in TOKEN_SPLIT.split(text.lower()) if t}
+
+
 def _row_material_key(row: dict) -> str | None:
     """Canonical material key for a run: material_id, else resolved fuel."""
     mid = (row.get("material_id") or "").strip().lower()
     if mid:
         return mid
-    fuel = (row.get("fuel") or "").lower()
+    fuel_tokens = _tokens(row.get("fuel") or "")
     for key, aliases in MATERIAL_ALIASES.items():
-        if any(a in fuel for a in aliases):
+        # whole-token match only — 'ethane' must not catch inside 'methane'
+        if any(a in fuel_tokens for a in aliases):
             return key
     return None
 
@@ -116,8 +125,12 @@ def _affinity(query_mat: str, row_mat: str | None, fuel: str) -> float:
     if row_mat == q:
         return AFFINITY_EXACT
     aliases = MATERIAL_ALIASES.get(q, (q,))
-    low = fuel.lower()
-    if any(a in low for a in aliases) or any(a in row_mat for a in aliases):
+    # alias = same substance under another name; whole-token matching keeps
+    # distinct chemicals apart ('ethane' ≠ 'methane', 'ethanol' ≠ 'methanol')
+    if row_mat in aliases:
+        return AFFINITY_ALIAS
+    toks = _tokens(fuel) | _tokens(row_mat)
+    if any(a in toks for a in aliases):
         return AFFINITY_ALIAS
     if row_mat in _class_of(q):
         return AFFINITY_CLASS

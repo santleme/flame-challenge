@@ -326,6 +326,64 @@ export class Engine {
     return null
   }
 
+  /**
+   * Apply a decision-card countermeasure to the live yard — makes each
+   * suppression option a distinct replay instead of the same untreated
+   * fire: gas starves ordinary fires but cannot touch a self-oxidizing
+   * candle (the Mir lesson), mist cools everything including smolder
+   * pockets, monitor-only commands no knock-down at all.
+   */
+  applyCountermeasure(action?: string): void {
+    const e = this.state
+    if (action === 'inert-gas' || action === 'water-mist') {
+      const gas = action === 'inert-gas'
+      let knocked = 0
+      let pockets = 0
+      let resisted = 0
+      for (const [k, f] of [...e.fires]) {
+        if (f.selfOxidizing) {
+          // the candle carries its own oxidizer — venting won't starve it
+          if (gas) {
+            resisted++
+            continue
+          }
+          f.intensity *= 0.55
+          continue
+        }
+        knocked++
+        // gas knock-down on smolder-capable fuel leaves re-igniting
+        // pockets far more often than a penetrating water-mist cool
+        if (f.smolder && this.rng() < (gas ? 0.5 : 0.2)) {
+          f.intensity = 0
+          f.hidden = true
+          f.dormant = 8 + this.rng() * 14
+          pockets++
+        } else {
+          e.fires.delete(k)
+        }
+      }
+      const extra = [
+        pockets ? `${pockets} dormant pocket(s) left` : null,
+        resisted ? `${resisted} self-oxidizing tile(s) unaffected` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      this.log(
+        gas ? 'science' : 'info',
+        gas
+          ? `Inert-gas flood: ${knocked} tile(s) knocked down${extra ? ` — ${extra}` : ''}.`
+          : `Water-mist cool: ${knocked} tile(s) cooled${extra ? ` — ${extra}` : ''}.`,
+        gas ? 'Spacecraft fire-suppression doctrine' : 'Mir-23/24 protocol',
+      )
+    } else if (action === 'monitor') {
+      this.log(
+        'warn',
+        'Monitor-only protocol: no knock-down commanded — watch for hidden re-ignition signatures.',
+      )
+    }
+    this.emit()
+  }
+
   /** replay a documented NASA fire incident in the largest active module */
   triggerScenario(id: string): boolean {
     const s = SCENARIOS.find((x) => x.id === id)

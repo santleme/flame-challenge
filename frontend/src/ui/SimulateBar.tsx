@@ -58,7 +58,7 @@ function topMaterialId(cond: DashConditions): string {
 interface Props {
   cond: DashConditions
   onCond: (patch: Partial<DashConditions>) => void
-  onApply: (presetId: string, patch: Partial<DashConditions>) => void
+  onApply: (presetId: string, patch: Partial<DashConditions>, action?: string) => void
 }
 
 /**
@@ -111,7 +111,7 @@ export default function SimulateBar({ cond, onCond, onApply }: Props) {
           className={`ml-auto rounded px-1.5 py-px font-mono text-[8.5px] font-semibold uppercase ${
             live ? 'bg-emerald-500/15 text-emerald-400' : 'bg-edge/60 text-mist'
           }`}
-          title={live ? 'cards scored by the C++20 physics core' : 'local risk mirror — backend offline'}
+          title={live ? 'live tactical synthesis — PSI-fitted risk model + C++20 ignition pressure + KNN evidence' : 'local risk mirror — backend offline'}
         >
           {live ? 'Engine: C++20' : 'local model'}
         </span>
@@ -201,11 +201,15 @@ export default function SimulateBar({ cond, onCond, onApply }: Props) {
                     <button
                       key={o.label}
                       onClick={() =>
-                        onApply(card.preset, {
-                          env: ENV_FOR_GRAVITY[o.model.gravity ?? ''] ?? cond.env,
-                          o2Pct: o.model.o2Pct,
-                          flowCms: o.model.flowCms,
-                        })
+                        onApply(
+                          card.preset,
+                          {
+                            env: ENV_FOR_GRAVITY[o.model.gravity ?? ''] ?? cond.env,
+                            o2Pct: o.model.o2Pct,
+                            flowCms: o.model.flowCms,
+                          },
+                          o.action,
+                        )
                       }
                       className="group/opt block w-full text-left"
                       title={`${o.why} — apply ${o.model.o2Pct}% O₂ / ${o.model.flowCms} cm/s and replay`}

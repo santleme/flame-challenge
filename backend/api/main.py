@@ -124,13 +124,17 @@ def api_decision_cards(materialId: str = "pmma", o2Pct: float = 21.0,
     """Live decision cards: countermeasure scores from the fitted risk
     model + KNN evidence + C++ ignition pressure for provenance."""
     payload = tactics.decision_cards(materialId, o2Pct, flowCms, gravity)
+    # unresolved ids (butane, …) fall back inside risk_index — chamber
+    # fields must quote the material the cards were actually built on
+    resolved = payload["material"]["materialId"]
     return {
         "engine": "c++",
         "chamber": {
-            "materialId": materialId,
+            "materialId": resolved,
+            "requestedMaterialId": materialId,
             "o2Pct": o2Pct,
             "flowCms": flowCms,
-            "ignitionPressure": round(eb.ignition_pressure(materialId, o2Pct), 4),
+            "ignitionPressure": round(eb.ignition_pressure(resolved, o2Pct), 4),
         },
         **payload,
     }
