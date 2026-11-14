@@ -190,25 +190,29 @@ def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str,
     if re.search(r"did not ignite|failed to ignite|no ignition|would not ignite|"
                  r"not ignite|non-?ignition", c):
         return "no-ignition", "none", cool
-    # radiative regime in all corpus wordings — "radiatively
-    # extinguishing", "extinguishes due to radiative loss", "likely
-    # radiative extinction" — not just the literal 'radiative extinction'
-    if re.search(r"radiativ\w*(?:\s+\w+){0,2}\s+extin\w*|"
-                 r"extin\w*(?:\s+\w+){0,2}\s+radiativ\w*|"
-                 r"radiativ\w*\s+loss", c):
-        return "extinction", "radiative", cool
-    if re.search(r"blow.?off|blows? out", c):
-        return "extinction", "blow-off", cool
-    # affirmative extinction language only — "no extinction observed",
-    # "fire extinguisher present" and negated mentions must not count;
+    # affirmative extinction evidence gates EVERY extinction typing —
+    # "no extinction observed", equipment nouns, negated mentions and
+    # radiative-loss remarks inside completed burns must not count;
     # a positive measured Dext is direct evidence on its own
-    if _affirmative_mention(c, _EXTINCTION_WORDS) or \
-            (isinstance(dext, float) and dext > 0):
+    extinct = _affirmative_mention(c, _EXTINCTION_WORDS) or \
+        (isinstance(dext, float) and dext > 0)
+    if _affirmative_mention(c, r"blow.?off|blows? out"):
+        return "extinction", "blow-off", cool
+    if extinct:
         if cool:
             return "extinction", "cool-flame", True
+        # radiative regime in all corpus wordings — "radiatively
+        # extinguishing", "extinguishes due to radiative loss" — types an
+        # affirmed extinction; a bare 'radiative loss' mention without
+        # extinction evidence (e.g. inside a completed burn) is not one
+        if _affirmative_mention(
+                c, r"radiativ\w*(?:\s+\w+){0,2}\s+extin\w*|"
+                   r"extin\w*(?:\s+\w+){0,2}\s+radiativ\w*|"
+                   r"radiativ\w*\s+loss"):
+            return "extinction", "radiative", cool
         # suppressant needs suppression EVIDENCE — ambient "O2/N2/CO2"
         # composition text is not an extinguishing agent observation
-        if _SUPPRESSANT_EVIDENCE.search(c):
+        if _affirmative_mention(c, _SUPPRESSANT_EVIDENCE.pattern):
             return "extinction", "suppressant", cool
         return "extinction", "oxygen-limit", cool
     if "disruption" in c or "burns? to disruption" in c:

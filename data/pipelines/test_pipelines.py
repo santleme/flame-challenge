@@ -575,6 +575,41 @@ def test_ambient_co2_is_not_suppressant_evidence():
     assert out[:2] == ("extinction", "suppressant")
 
 
+def test_radiative_loss_mention_does_not_erase_completion():
+    """A completed burn that merely mentions radiative losses is NOT an
+    extinction — radiative wordings only type an affirmed extinction."""
+    out = norm.classify_outcome(
+        "Radiative losses were small; droplet burned to completion.", 0.0)
+    assert out == ("burnout", "none", False)
+    out = norm.classify_outcome(
+        "No radiatively extinguishing flame was observed. "
+        "Droplet burned to completion.", 0.0)
+    assert out[0] == "burnout"
+
+
+def test_negated_radiative_subtype_falls_through():
+    """An affirmed extinction with a negated radiative mechanism types
+    as oxygen-limit — negated regime wording must not relabel it."""
+    out = norm.classify_outcome(
+        "flame extinguished at quiescent limit; "
+        "no radiative extinction observed", None)
+    assert out[:2] == ("extinction", "oxygen-limit")
+
+
+def test_radiative_wording_still_types_affirmed_extinction():
+    """The added corpus wordings keep working once extinction is
+    established — 'radiatively extinguishing', 'due to radiative loss',
+    and a measured Dext alongside a loss remark."""
+    out = norm.classify_outcome(
+        "the flame oscillates before radiatively extinguishing", None)
+    assert out[:2] == ("extinction", "radiative")
+    out = norm.classify_outcome(
+        "flame extinguishes due to radiative loss", None)
+    assert out[:2] == ("extinction", "radiative")
+    out = norm.classify_outcome("droplet went out; radiative loss", 1.7)
+    assert out[:2] == ("extinction", "radiative")
+
+
 def test_flex_shared_cir_pairs_by_test_number(monkeypatch, tmp_path):
     """FLEX-070 and FLEX-073 share CIR 193F001 — pairing must use the
     test number, not the CIR, or durations get mixed up."""

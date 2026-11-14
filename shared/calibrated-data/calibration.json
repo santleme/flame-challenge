@@ -61,7 +61,7 @@
     {
       "id": "heptane",
       "name": "n-heptane",
-      "locPct": 12.0,
+      "locPct": 16.0,
       "spreadMinCms": 0.2,
       "spreadMaxCms": 4.0,
       "sootIndex": 0.55,
@@ -70,7 +70,9 @@
       "sourceInvestigations": [
         "flex-2"
       ],
-      "locBaseline": 12.0
+      "locBaseline": 12.0,
+      "locSource": "psi-data",
+      "locMethod": "extinction-floor"
     },
     {
       "id": "iso-octane",
@@ -346,7 +348,7 @@
       "pressureKpa": 101,
       "partialGravity": false,
       "loc": null,
-      "effectiveLoc": 12.0,
+      "effectiveLoc": 16.0,
       "hazards": [
         "cool-flames",
         "detection-gap",
