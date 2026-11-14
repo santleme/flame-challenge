@@ -9,9 +9,10 @@ import asyncio
 import json
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from backend.services import engine_bridge as eb
 from backend.services import rag, risk
@@ -24,23 +25,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Physical bounds for atmosphere/config inputs. O₂ is a percentage; the
+# calibrated flow data tops out ~70 cm/s and pressures are 57–101 kPa, so
+# the upper bounds below leave generous headroom while still rejecting
+# pathological values (negative, NaN/inf, >32-bit seeds) with a 422
+# instead of letting them reach the engine as a 500.
+_O2 = {"ge": 0.0, "le": 100.0, "allow_inf_nan": False}
+_FLOW = {"ge": 0.0, "le": 300.0, "allow_inf_nan": False}
+_PRESSURE = {"ge": 1.0, "le": 300.0, "allow_inf_nan": False}
+_SEED = {"ge": 0, "le": 4_294_967_295}  # C++ unsigned int
+
+
+@app.exception_handler(eb.UnknownInvestigationError)
+def unknown_investigation(_: Request,
+                          exc: eb.UnknownInvestigationError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
 
 class PreviewReq(BaseModel):
     investigationId: str
-    o2Pct: float
-    flowCms: float | None = None
+    o2Pct: float = Field(**_O2)
+    flowCms: float | None = Field(default=None, **_FLOW)
+    pressureKpa: float | None = Field(default=None, **_PRESSURE)
 
 
 class ChamberReq(BaseModel):
     investigationId: str
-    o2Pct: float
-    flowCms: float | None = None
-    seed: int = 1
+    o2Pct: float = Field(**_O2)
+    flowCms: float | None = Field(default=None, **_FLOW)
+    pressureKpa: float | None = Field(default=None, **_PRESSURE)
+    seed: int = Field(default=1, **_SEED)
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "engine": "c++", "module": "freefall_engine"}
+    return {"ok": True, "engine": eb.ENGINE, "module": eb.MODULE}
 
 
 @app.get("/api/materials")
@@ -62,8 +81,8 @@ class AskReq(BaseModel):
 
 class RiskReq(BaseModel):
     materialId: str = "pmma"
-    o2Pct: float = 21.0
-    flowCms: float = 0.0
+    o2Pct: float = Field(default=21.0, **_O2)
+    flowCms: float = Field(default=0.0, **_FLOW)
     gravity: str = "microgravity"
 
 
@@ -88,8 +107,12 @@ def api_risk(req: RiskReq) -> dict:
 
 
 @app.get("/api/risk")
-def api_risk_get(materialId: str = "pmma", o2Pct: float = 21.0,
-                 flowCms: float = 0.0, gravity: str = "microgravity") -> dict:
+def api_risk_get(materialId: str = "pmma",
+                 o2Pct: float = Query(21.0, ge=0.0, le=100.0,
+                                      allow_inf_nan=False),
+                 flowCms: float = Query(0.0, ge=0.0, le=300.0,
+                                        allow_inf_nan=False),
+                 gravity: str = "microgravity") -> dict:
     return risk.risk_index(materialId, o2Pct, flowCms, gravity)
 
 
@@ -111,7 +134,8 @@ async def chamber_ws(ws: WebSocket) -> None:
     await ws.accept()
     try:
         req = ChamberReq(**json.loads(await ws.receive_text()))
-        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms, req.seed)
+        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms,
+                             req.seed, req.pressureKpa)
         dt = 1.0 / 30.0
         deadline = time.monotonic() + 60
         while not ch.finished() and time.monotonic() < deadline:

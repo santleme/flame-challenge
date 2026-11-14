@@ -248,8 +248,10 @@ def main() -> int:
             done = 0
             for fut in as_completed(futs):
                 try:
-                    ok += 1 if fut.result() else 0
-                    fail += 0 if fut.result() else 1
+                    if fut.result():
+                        ok += 1
+                    else:
+                        fail += 1
                 except Exception:  # noqa: BLE001
                     fail += 1
                 done += 1
