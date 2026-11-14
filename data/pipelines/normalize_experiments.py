@@ -473,7 +473,7 @@ def _legacy_outcome(r: dict) -> tuple[str, str]:
     return "unknown", "none"
 
 
-def _flex_end_outcome(r: dict) -> tuple[str, str]:
+def _flex_end_outcome(r: dict, comments: str = "") -> tuple[str, str]:
     """PSI-69 records the true test ending in extra_json['Test end']
     (Extinction / Disruption / Completion) — not in extinction_mode."""
     if _flag(r.get("ignition_flag")) is False:
@@ -484,7 +484,11 @@ def _flex_end_outcome(r: dict) -> tuple[str, str]:
     except (json.JSONDecodeError, TypeError, AttributeError):
         end = ""
     if end == "extinction":
-        text = f"{r.get('comments') or ''} {r.get('notes') or ''}".lower()
+        # regime evidence lives in the caller-provided text (the
+        # test-point comments); the summary row's comments are blank
+        text = (comments
+                or f"{r.get('comments') or ''} {r.get('notes') or ''}") \
+            .lower()
         _, et, _c = classify_outcome(text, None)
         # FLEX droplet flames die by radiative loss — the recorded regime
         # unless comments say otherwise
@@ -496,49 +500,62 @@ def _flex_end_outcome(r: dict) -> tuple[str, str]:
     return _legacy_outcome(r)
 
 
-def _flex_points_cirs() -> set[str]:
-    """CIR test numbers present in flex_test_points.csv — the richer
-    per-test table. experimental_runs rows carrying the same CIR are
-    the same test under a different run_id and must not double-count."""
+def _flex_test_num(test_id: str | None) -> int | None:
+    """Test sequence number — 'FLEX-070' → 70, and experimental_runs
+    data_id '70; 193F001' → 70. CIR numbers are NOT unique in the
+    corpus (FLEX-070/073 share 193F001); the sequence number is."""
+    m = re.search(r"(\d+)", (test_id or "").split(";")[0])
+    return int(m.group(1)) if m else None
+
+
+def _flex_points_nums() -> set[int]:
+    """Test numbers present in flex_test_points.csv — the richer
+    per-test table. experimental_runs rows for the same test must not
+    double-count (its data_id carries the number before the CIR)."""
     path = LEGACY_DIR / "flex_test_points.csv"
     if not path.exists():
         return set()
-    return {(r.get("cir_test_number") or "").strip()
-            for r in csv.DictReader(
-                path.open(encoding="utf-8", errors="replace"))}
+    return {n for n in (_flex_test_num(r.get("test_id"))
+                       for r in csv.DictReader(
+                           path.open(encoding="utf-8", errors="replace")))
+            if n is not None}
 
 
-def _flex_runs_meta() -> dict[str, dict]:
-    """PSI-69 experimental_runs rows keyed by CIR test number — the
-    authoritative outcome metadata (Test end, ignition/cool flags,
-    burn time) for the richer flex_test_points physics rows."""
+def _flex_runs_meta() -> tuple[dict[int, dict], dict[str, list[dict]]]:
+    """PSI-69 experimental_runs rows — the authoritative outcome
+    metadata (Test end, ignition/cool flags, burn time) for the
+    richer flex_test_points physics rows — keyed by test number
+    (primary pairing) and by CIR (fallback; may collide)."""
     path = LEGACY_DIR / "experimental_runs.csv"
+    by_num: dict[int, dict] = {}
+    by_cir: dict[str, list[dict]] = {}
     if not path.exists():
-        return {}
-    lut: dict[str, dict] = {}
+        return by_num, by_cir
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         if (r.get("accession") or "").strip() != "PSI-69":
             continue
         parts = (r.get("data_id") or "").split(";")
+        n = _flex_test_num(r.get("data_id"))
+        if n is not None:
+            by_num.setdefault(n, r)
         if len(parts) > 1 and parts[1].strip():
-            lut.setdefault(parts[1].strip(), r)
-    return lut
+            by_cir.setdefault(parts[1].strip(), []).append(r)
+    return by_num, by_cir
 
 
 def parse_legacy_runs(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "experimental_runs.csv"
     if not path.exists():
         return []
-    flex_cirs = _flex_points_cirs()
+    flex_nums = _flex_points_nums()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
         if not acc or acc in covered or acc not in ACCESSIONS:
             continue
         if acc == "PSI-69":
-            parts = (r.get("data_id") or "").split(";")
-            cir = parts[1].strip() if len(parts) > 1 else ""
-            if cir and cir in flex_cirs:
+            n = _flex_test_num(r.get("data_id"))
+            if n is not None and n in flex_nums:
                 continue  # emitted by parse_legacy_flex with richer fields
         inv = ACCESSIONS[acc][0]
         fuel = (r.get("fuel_or_material") or r.get("fuel_bottle") or "").strip() or None
@@ -611,28 +628,40 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "flex_test_points.csv"
     if not path.exists():
         return []
-    meta = _flex_runs_meta()
+    by_num, by_cir = _flex_runs_meta()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
         if not acc or acc in covered or acc not in ACCESSIONS:
             continue
         inv = ACCESSIONS[acc][0]
-        fuel = (r.get("fuel_or_material") or "").strip() or None
         comments = (r.get("comments") or "").strip()
         dext = _num1(r.get("dext_mm"))
-        # the matching experimental_runs row carries the authoritative
-        # end state — Test end beats the comment-derived outcome
-        m = meta.get((r.get("cir_test_number") or "").strip())
+        # pair by test number (unique); a shared CIR only pairs when
+        # it maps to exactly one summary row
+        n = _flex_test_num(r.get("test_id"))
+        m = by_num.get(n) if n is not None else None
+        if m is None:
+            cands = by_cir.get((r.get("cir_test_number") or "").strip(), [])
+            m = cands[0] if len(cands) == 1 else None
         burn_time = None
         if m is not None:
-            outcome, etype = _flex_end_outcome(m)
+            # the summary row carries the authoritative end state — its
+            # comments are blank, so regime typing reads the point's own
+            outcome, etype = _flex_end_outcome(m, comments)
             cool = _flag(m.get("cool_flame_flag"))
             if cool is None:
                 cool = cool_flame_observed(comments)
             burn_time = _num1(m.get("burn_time_s"))
         else:
             outcome, etype, cool = classify_outcome(comments, dext)
+        # test-point placeholders: some rows ship blank fuel / o2_mf=0.00
+        # while the summary row records the real values — backfill
+        fuel = (r.get("fuel_or_material") or "").strip() \
+            or (m or {}).get("fuel_or_material", "").strip() or None
+        o2mf = _num1(r.get("o2_mf"))
+        if (o2mf is None or o2mf == 0.0) and m is not None:
+            o2mf = _mid(m.get("o2_mf_min"), m.get("o2_mf_max"))
         atm = _num1(r.get("pressure_atm"))
         out.append({
             "run_id": (r.get("test_id") or "").strip() or f"{acc}-tp",
@@ -640,7 +669,7 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
             "investigation_id": inv,
             "fuel": fuel,
             "material_id": fuel_id(fuel),
-            "o2_pct": round(_num1(r["o2_mf"]) * 100, 3) if _num1(r.get("o2_mf")) else None,
+            "o2_pct": round(o2mf * 100, 3) if o2mf is not None else None,
             "n2_pct": round(_num1(r["n2_mf"]) * 100, 2) if _num1(r.get("n2_mf")) else None,
             "co2_pct": round(_num1(r["co2_mf"]) * 100, 2) if _num1(r.get("co2_mf")) else None,
             "he_pct": round(_num1(r["he_mf"]) * 100, 2) if _num1(r.get("he_mf")) else None,

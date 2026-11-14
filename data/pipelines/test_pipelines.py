@@ -414,6 +414,20 @@ def test_flex_test_end_drives_outcome():
     ) == ("no-ignition", "none")
 
 
+def _flex_points_csv(tmp_path, rows: list[dict]):
+    cols = ["accession", "test_id", "cir_test_number", "fuel_or_material",
+            "o2_mf", "n2_mf", "co2_mf", "he_mf", "pressure_atm",
+            "temperature_k", "d0_mm", "kavg_mm2_s", "dext_mm", "fiber",
+            "comments", "source_file"]
+    p = tmp_path / "flex_test_points.csv"
+    with p.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(cols)
+        for d in rows:
+            w.writerow([d.get(c, "") for c in cols])
+    return p
+
+
 def test_legacy_flex_cir_dedup(monkeypatch, tmp_path):
     """The same FLEX test exists in both legacy tables under different
     ids ('2; 20CAL10' vs FLEX-002/20CAL10) — emit it once, from the
@@ -426,16 +440,94 @@ def test_legacy_flex_cir_dedup(monkeypatch, tmp_path):
          "fuel_or_material": "Heptane", "o2_pct_min": "16",
          "extra_json": json.dumps({"Test end": "Completion"})},
     ])
-    (tmp_path / "flex_test_points.csv").write_text(
-        "accession,test_id,cir_test_number,fuel_or_material,o2_mf,"
-        "dext_mm,comments\n"
-        "PSI-69,FLEX-002,20CAL10,Heptane,0.15,1.2,radiative extinction\n")
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-002",
+         "cir_test_number": "20CAL10", "fuel_or_material": "Heptane",
+         "o2_mf": "0.15", "dext_mm": "1.2",
+         "comments": "radiative extinction"},
+    ])
     monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
     runs = norm.parse_legacy_runs(set())
     pts = norm.parse_legacy_flex(set())
     assert len(runs) == 1 and runs[0]["run_id"] == "9; 30CAL07"
     assert len(pts) == 1 and pts[0]["run_id"] == "FLEX-002"
     assert pts[0]["outcome"] == "extinction"   # Test end, not comments
+
+
+def test_flex_shared_cir_pairs_by_test_number(monkeypatch, tmp_path):
+    """FLEX-070 and FLEX-073 share CIR 193F001 — pairing must use the
+    test number, not the CIR, or durations get mixed up."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "70; 193F001",
+         "fuel_or_material": "Heptane", "o2_mf_min": "0.15",
+         "burn_time_s": "1.6",
+         "extra_json": json.dumps({"Test end": "Extinction"})},
+        {"accession": "PSI-69", "data_id": "73; 193F001",
+         "fuel_or_material": "Heptane", "o2_mf_min": "0.15",
+         "burn_time_s": "1.5",
+         "extra_json": json.dumps({"Test end": "Extinction"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-070",
+         "cir_test_number": "193F001", "fuel_or_material": "Heptane",
+         "o2_mf": "0.15", "comments": "flame extinction"},
+        {"accession": "PSI-69", "test_id": "FLEX-073",
+         "cir_test_number": "193F001", "fuel_or_material": "Heptane",
+         "o2_mf": "0.15", "comments": "flame extinction"},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = norm.parse_legacy_flex(set())
+    assert len(pts) == 2
+    by_id = {p["run_id"]: p for p in pts}
+    assert by_id["FLEX-070"]["burn_time_s"] == 1.6
+    assert by_id["FLEX-073"]["burn_time_s"] == 1.5
+
+
+def test_flex_point_placeholders_backfilled(monkeypatch, tmp_path):
+    """FLEX-112/120/136 ship blank fuel and o2_mf=0.00 — the summary
+    row holds the real values and must backfill them."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "112; C10M401",
+         "fuel_or_material": "Methanol", "o2_mf_min": "0.21",
+         "o2_mf_max": "0.21",
+         "extra_json": json.dumps({"Test end": "Completion"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-112",
+         "cir_test_number": "C10M401", "fuel_or_material": "",
+         "o2_mf": "0.00", "d0_mm": "3.99", "comments": "fiber test"},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = norm.parse_legacy_flex(set())
+    assert len(pts) == 1
+    assert pts[0]["fuel"] == "Methanol"
+    assert pts[0]["o2_pct"] == 21.0
+    assert pts[0]["outcome"] == "burnout"      # Test end = Completion
+
+
+def test_flex_point_comments_drive_extinction_regime(monkeypatch, tmp_path):
+    """The summary row's comments are blank — the regime must come from
+    the test point's own comment, not default to 'radiative'."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "1; A1",
+         "fuel_or_material": "Heptane",
+         "extra_json": json.dumps({"Test end": "Extinction"})},
+        {"accession": "PSI-69", "data_id": "2; A2",
+         "fuel_or_material": "Heptane",
+         "extra_json": json.dumps({"Test end": "Extinction"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-001", "cir_test_number": "A1",
+         "fuel_or_material": "Heptane", "o2_mf": "0.15",
+         "comments": "diffusive extinction at finite diameter"},
+        {"accession": "PSI-69", "test_id": "FLEX-002", "cir_test_number": "A2",
+         "fuel_or_material": "Heptane", "o2_mf": "0.15",
+         "comments": "radiative extinction observed"},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = {p["run_id"]: p for p in norm.parse_legacy_flex(set())}
+    assert pts["FLEX-001"]["extinction_type"] == "oxygen-limit"
+    assert pts["FLEX-002"]["extinction_type"] == "radiative"
 
 
 def test_legacy_non_test_rows_skipped(monkeypatch, tmp_path):
