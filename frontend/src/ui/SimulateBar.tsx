@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, History, Play } from 'lucide-react'
-import data from '../data/decision_cards.json'
 import { decisionScore } from '../game/decisions'
 import { PRESETS } from '../game/presets'
-import { fetchDecisionCards, localNeighbors } from '../sim-bridge/decisions'
+import { fetchDecisionCards, localDecisionCards } from '../sim-bridge/decisions'
 import { riskIndexLocal, riskMaterials } from '../sim-bridge/risk'
 import type {
   DashConditions,
-  DecisionCard,
   DecisionCardsPayload,
   EnvKey,
   NeighborRef,
 } from '../types'
-
-const CARDS = (data as { cards: DecisionCard[] }).cards
 
 const ENVS: { key: EnvKey; label: string; short: string }[] = [
   { key: 'microgravity', label: 'ISS Microgravity (0g)', short: '0g' },
@@ -84,18 +80,18 @@ export default function SimulateBar({ cond, onCond, onApply }: Props) {
     return () => clearTimeout(t)
   }, [topMat, cond])
 
-  const fallbackNeighbors = useMemo(
-    () => localNeighbors(topMat, cond.o2Pct, cond.flowCms, 3),
-    [topMat, cond.o2Pct, cond.flowCms],
-  )
+  const fallback = useMemo(() => localDecisionCards(topMat, cond), [topMat, cond])
+
+  const cards = live?.cards ?? fallback.cards
+  const briefing = live?.briefing ?? fallback.briefing
 
   const scored = useMemo(
     () =>
-      (live?.cards ?? CARDS).map((c) => ({
+      cards.map((c) => ({
         card: c,
         options: c.options.map((o) => ({ o, score: o.score ?? decisionScore(o.model) })),
       })),
-    [live],
+    [cards],
   )
 
   return (
@@ -168,11 +164,11 @@ export default function SimulateBar({ cond, onCond, onApply }: Props) {
         ))}
       </div>
 
-      {/* tactical briefing from the SI layer */}
-      {open && live && (
+      {/* tactical briefing — live synthesizer, or the local mirror offline */}
+      {open && briefing && (
         <p className="mx-3 mt-2 rounded border border-edge/60 bg-panel2 px-2.5 py-1.5 font-mono text-[9.5px] leading-snug text-mist">
           <span className="mr-1.5 font-bold uppercase text-ember">briefing · {topMat}</span>
-          {live.briefing}
+          {briefing}
         </p>
       )}
 
@@ -180,7 +176,7 @@ export default function SimulateBar({ cond, onCond, onApply }: Props) {
       {open && (
         <div className="grid gap-2.5 p-3 md:grid-cols-3">
           {scored.map(({ card, options }) => {
-            const nb = card.neighbors ?? (live ? [] : fallbackNeighbors)
+            const nb = card.neighbors ?? []
             return (
               <div
                 key={card.id}

@@ -99,8 +99,17 @@ def _class_of(material_key: str) -> set[str]:
 TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 
 
-def _tokens(text: str) -> set[str]:
-    return {t for t in TOKEN_SPLIT.split(text.lower()) if t}
+def _norm(text: str) -> str:
+    """space-padded canonical form: lowercase, every non-alnum run → one
+    space. 'Iso-Octane', 'iso octane' and 'iso-octane' all collapse to
+    ' iso octane ', so aliases match regardless of hyphenation while a
+    padded contains() keeps 'ethane' out of 'methane'."""
+    return " " + " ".join(t for t in TOKEN_SPLIT.split(text.lower()) if t) + " "
+
+
+def _has_alias(text_norm: str, alias: str) -> bool:
+    a = _norm(alias)
+    return len(a) > 2 and a in text_norm
 
 
 def _row_material_key(row: dict) -> str | None:
@@ -108,10 +117,11 @@ def _row_material_key(row: dict) -> str | None:
     mid = (row.get("material_id") or "").strip().lower()
     if mid:
         return mid
-    fuel_tokens = _tokens(row.get("fuel") or "")
+    fuel_norm = _norm(row.get("fuel") or "")
     for key, aliases in MATERIAL_ALIASES.items():
-        # whole-token match only — 'ethane' must not catch inside 'methane'
-        if any(a in fuel_tokens for a in aliases):
+        # whole-phrase match — 'ethane' must not catch inside 'methane',
+        # but 'iso-octane' must catch 'iso-octane'/'iso octane'
+        if any(_has_alias(fuel_norm, a) for a in aliases):
             return key
     return None
 
@@ -125,12 +135,10 @@ def _affinity(query_mat: str, row_mat: str | None, fuel: str) -> float:
     if row_mat == q:
         return AFFINITY_EXACT
     aliases = MATERIAL_ALIASES.get(q, (q,))
-    # alias = same substance under another name; whole-token matching keeps
+    # alias = same substance under another name; whole-phrase matching keeps
     # distinct chemicals apart ('ethane' ≠ 'methane', 'ethanol' ≠ 'methanol')
-    if row_mat in aliases:
-        return AFFINITY_ALIAS
-    toks = _tokens(fuel) | _tokens(row_mat)
-    if any(a in toks for a in aliases):
+    hay = _norm(f"{fuel} {row_mat}")
+    if any(_has_alias(hay, a) for a in aliases):
         return AFFINITY_ALIAS
     if row_mat in _class_of(q):
         return AFFINITY_CLASS

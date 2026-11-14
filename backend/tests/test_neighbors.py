@@ -64,6 +64,17 @@ def test_ethanol_does_not_alias_methanol():
         assert "methanol" not in (n["fuel"] or "").lower()
 
 
+def test_hyphenated_aliases_match_fuel_text():
+    """Aliases like 'iso-octane', 'jp-8', 'decan-1-ol' must match fuel
+    text written with hyphen, space, or squash — the tokenizer splits
+    them, so matching happens on normalized phrases."""
+    assert neighbors._row_material_key({"fuel": "iso-octane droplet"}) == "iso-octane"
+    assert neighbors._row_material_key({"fuel": "Iso Octane"}) == "iso-octane"
+    assert neighbors._row_material_key({"fuel": "JP-8 pool fire"}) == "jp8"
+    assert neighbors._row_material_key({"fuel": "decan-1-ol wick"}) == "decanol"
+    assert neighbors._row_material_key({"fuel": "n-heptane"}) == "heptane"
+
+
 def test_k_is_bounded():
     assert len(neighbors.nearest("pmma", 21.0, k=0)) == 1
     assert len(neighbors.nearest("pmma", 21.0, k=99)) <= 10
