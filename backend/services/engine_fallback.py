@@ -25,6 +25,10 @@ DROPLET_IGNITION, DROPLET_HOT, DROPLET_COOL, DROPLET_EXTINCTION, DROPLET_OUT = r
 SPREAD_PREHEAT, SPREAD_SPREADING, SPREAD_COOLING, SPREAD_OUT = range(4)
 
 
+def _b(v: bool) -> str:
+    return "true" if v else "false"
+
+
 @dataclass
 class Material:
     id: str = ""
@@ -301,8 +305,11 @@ class _SolidSpread:
                     self.regime = SPREAD_OUT
                 else:
                     # enter Spreading with a consistent first-frame state
+                    # (the first spreading step also advances the front)
                     self.regime = SPREAD_SPREADING
                     self.rate_cms = self._nominal_rate()
+                    self.front_cm += self.rate_cms * dt
+                    self.burn_len_cm = min(self.front_cm, self.c_slab)
                     self.intensity = self._intensity(self.rate_cms)
 
         elif self.regime == SPREAD_SPREADING:
@@ -434,29 +441,24 @@ class Chamber:
     def state_json(self) -> str:
         if self._use_droplet:
             s = self._droplet
-            return json.dumps({
-                "model": "droplet",
-                "tSec": round(s.t_sec, 3),
-                "regime": s.regime,
-                "dropletDMm": round(s.droplet_d_mm, 3),
-                "flameRMm": round(s.flame_r_mm, 3),
-                "flameTempK": round(s.temp_k, 1),
-                "heatReleaseW": round(s.heat_w, 2),
-                "burnFraction": round(s.burn_fraction, 3),
-                "ignited": self._ignited,
-                "coolFlame": self.cool_flame(),
-                "finished": self.finished(),
-            }, separators=(",", ":"))
+            return (
+                f'{{"model":"droplet","tSec":{s.t_sec:.3f},'
+                f'"regime":{s.regime},'
+                f'"dropletDMm":{s.droplet_d_mm:.3f},'
+                f'"flameRMm":{s.flame_r_mm:.3f},'
+                f'"flameTempK":{s.temp_k:.1f},'
+                f'"heatReleaseW":{s.heat_w:.2f},'
+                f'"burnFraction":{s.burn_fraction:.3f},'
+                f'"ignited":{_b(self._ignited)},'
+                f'"coolFlame":{_b(self.cool_flame())},'
+                f'"finished":{_b(self.finished())}}}')
         s = self._spread
-        return json.dumps({
-            "model": "spread",
-            "tSec": round(s.t_sec, 3),
-            "regime": s.regime,
-            "frontPosCm": round(s.front_cm, 3),
-            "spreadRateCms": round(s.rate_cms, 3),
-            "burnLengthCm": round(s.burn_len_cm, 3),
-            "intensity": round(s.intensity, 3),
-            "ignited": self._ignited,
-            "coolFlame": False,
-            "finished": self.finished(),
-        }, separators=(",", ":"))
+        return (
+            f'{{"model":"spread","tSec":{s.t_sec:.3f},"regime":{s.regime},'
+            f'"frontPosCm":{s.front_cm:.3f},'
+            f'"spreadRateCms":{s.rate_cms:.3f},'
+            f'"burnLengthCm":{s.burn_len_cm:.3f},'
+            f'"intensity":{s.intensity:.3f},'
+            f'"ignited":{_b(self._ignited)},'
+            f'"coolFlame":false,'
+            f'"finished":{_b(self.finished())}}}')
