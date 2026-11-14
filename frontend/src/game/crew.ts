@@ -6,8 +6,10 @@ import type { CrewMember, GameState, Room, Vec } from './types'
 import { rectContains, tileKey } from './types'
 
 export function moveAlongPath(c: CrewMember, dt: number): boolean {
-  // one distance budget per tick — each waypoint consumes from it
-  let allowance = Math.max(c.speed * dt * (c.state === 'injured' ? 0.45 : 1), 0.001)
+  // one distance budget per tick — each waypoint consumes from it; a
+  // non-positive budget (dt=0, paused) must not teleport or move backwards
+  let allowance = c.speed * dt * (c.state === 'injured' ? 0.45 : 1)
+  if (allowance <= 0) return c.path.length === 0
   while (c.path.length) {
     const t = c.path[0]
     const dx = t.x - c.pos.x

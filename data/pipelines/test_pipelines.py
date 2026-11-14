@@ -55,6 +55,24 @@ def test_explicit_extinction_text_wins():
     assert etype == "oxygen-limit"
 
 
+def test_negated_extinction_words_do_not_count():
+    # "no extinction observed" must not produce outcome=extinction
+    out, _, _ = norm.classify_outcome(
+        "burned to completion; no extinction observed", 0.0)
+    assert out == "burnout"
+
+
+def test_extinguisher_equipment_is_not_extinction():
+    out, _, _ = norm.classify_outcome(
+        "a fire extinguisher was staged nearby for safety", None)
+    assert out == "unknown"
+
+
+def test_completion_comment_beats_dext_sentinel():
+    out, _, _ = norm.classify_outcome("droplet burned to completion", 0.0)
+    assert out == "burnout"
+
+
 # ---- cool-flame negation awareness ----
 
 @pytest.mark.parametrize("text", [
@@ -62,6 +80,10 @@ def test_explicit_extinction_text_wins():
     "No cool flame detected.",
     "A cool flame was not observed.",
     "cool flame not formed during the test",
+    "no evidence of a cool flame was found",
+    "without a cool flame the droplet went out",
+    "cool flame was never observed",
+    "droplet never had a cool flame",
 ])
 def test_negated_cool_flame_is_negative(text):
     assert norm.cool_flame_observed(text) is False
@@ -72,6 +94,8 @@ def test_negated_cool_flame_is_negative(text):
     "second-stage cool flame visible",
     "a cool-flame regime followed the hot burn",
     "No ignition occurred; a cool flame followed.",
+    "no ignition and a cool flame",
+    "cool flame no more than 2 s visible",
 ])
 def test_affirmative_cool_flame_is_positive(text):
     assert norm.cool_flame_observed(text) is True
@@ -415,7 +439,8 @@ def test_flex_test_end_drives_outcome():
 
 
 def _flex_points_csv(tmp_path, rows: list[dict]):
-    cols = ["accession", "test_id", "cir_test_number", "fuel_or_material",
+    cols = ["accession", "test_id", "cir_test_number", "test_time",
+            "fuel_or_material",
             "o2_mf", "n2_mf", "co2_mf", "he_mf", "pressure_atm",
             "temperature_k", "d0_mm", "kavg_mm2_s", "dext_mm", "fiber",
             "comments", "source_file"]
@@ -452,6 +477,102 @@ def test_legacy_flex_cir_dedup(monkeypatch, tmp_path):
     assert len(runs) == 1 and runs[0]["run_id"] == "9; 30CAL07"
     assert len(pts) == 1 and pts[0]["run_id"] == "FLEX-002"
     assert pts[0]["outcome"] == "extinction"   # Test end, not comments
+
+
+def test_flex_pairs_by_cir_not_sequence(monkeypatch, tmp_path):
+    """The tables number tests differently: FLEX-157's summary is
+    '156; C03H401' — pairing must join on CIR, not the digit prefix,
+    and the dedup set must be the resolved mapping."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "156; C03H401",
+         "fuel_or_material": "Heptane", "burn_time_s": "3.2",
+         "extra_json": json.dumps(
+             {"Test GMT": "19:12:27", "Test end": "Completion"})},
+        {"accession": "PSI-69", "data_id": "157; C05M101",
+         "fuel_or_material": "Methanol", "burn_time_s": "7.6",
+         "extra_json": json.dumps(
+             {"Test GMT": "13:41:00", "Test end": "Extinction"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-157",
+         "cir_test_number": "C03H401", "test_time": "19:12:27 (GMT)",
+         "fuel_or_material": "Heptane", "o2_mf": "0.18"},
+        {"accession": "PSI-69", "test_id": "FLEX-158",
+         "cir_test_number": "C05M101", "test_time": "13:41:00 (GMT)",
+         "fuel_or_material": "Methanol", "o2_mf": "0.16"},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = {p["run_id"]: p for p in norm.parse_legacy_flex(set())}
+    # FLEX-157 keeps ITS summary (Completion/3.2s), not the methanol run
+    assert pts["FLEX-157"]["outcome"] == "burnout"
+    assert pts["FLEX-157"]["burn_time_s"] == 3.2
+    assert pts["FLEX-158"]["outcome"] == "extinction"
+    assert pts["FLEX-158"]["burn_time_s"] == 7.6
+    # and both summaries are consumed — neither leaks into runs output
+    assert not norm.parse_legacy_runs(set())
+
+
+def test_flex_shared_cir_corroborated_by_gmt(monkeypatch, tmp_path):
+    """Same-CIR collisions resolve by test GMT when sequences disagree —
+    FLEX-070/073 share 193F001 and their summaries carry other prefixes."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "68; 193F001",
+         "fuel_or_material": "Heptane", "burn_time_s": "1.6",
+         "extra_json": json.dumps(
+             {"Test GMT": "10:00:00", "Test end": "Extinction"})},
+        {"accession": "PSI-69", "data_id": "74; 193F001",
+         "fuel_or_material": "Heptane", "burn_time_s": "1.5",
+         "extra_json": json.dumps(
+             {"Test GMT": "11:00:00", "Test end": "Extinction"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-070",
+         "cir_test_number": "193F001", "test_time": "10:00:00 (GMT)",
+         "fuel_or_material": "Heptane", "o2_mf": "0.15",
+         "comments": "flame extinction"},
+        {"accession": "PSI-69", "test_id": "FLEX-073",
+         "cir_test_number": "193F001", "test_time": "11:00:00 (GMT)",
+         "fuel_or_material": "Heptane", "o2_mf": "0.15",
+         "comments": "flame extinction"},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    pts = {p["run_id"]: p for p in norm.parse_legacy_flex(set())}
+    assert pts["FLEX-070"]["burn_time_s"] == 1.6
+    assert pts["FLEX-073"]["burn_time_s"] == 1.5
+
+
+def test_radiative_wording_not_suppressant(monkeypatch, tmp_path):
+    """'radiatively extinguishing' + ambient O2/N2/CO2 composition →
+    radiative, not suppressant — gas mixture text is not agent evidence."""
+    _legacy_runs_csv(tmp_path, [
+        {"accession": "PSI-69", "data_id": "115; C12M101",
+         "fuel_or_material": "Methanol",
+         "extra_json": json.dumps(
+             {"Test GMT": "19:21:31", "Test end": "Extinction"})},
+    ])
+    _flex_points_csv(tmp_path, [
+        {"accession": "PSI-69", "test_id": "FLEX-121",
+         "cir_test_number": "C12M101", "test_time": "19:21:31 (GMT)",
+         "fuel_or_material": "Methanol", "o2_mf": "0.12",
+         "comments": "droplet burning in a 0.12/0.49/0.40 O2/N2/CO2, "
+                     "1.0 atm ambient environment. The flame oscillates "
+                     "before radiatively extinguishing."},
+    ])
+    monkeypatch.setattr(norm, "LEGACY_DIR", tmp_path)
+    (pt,) = norm.parse_legacy_flex(set())
+    assert pt["extinction_type"] == "radiative"
+
+
+def test_ambient_co2_is_not_suppressant_evidence():
+    """A generic extinction + ambient mixture → oxygen-limit; only
+    suppression-agent wording earns 'suppressant'."""
+    out = norm.classify_outcome(
+        "burning in a 0.12/0.49/0.40 O2/N2/CO2 ambient. "
+        "diffusive extinction at finite diameter", None)
+    assert out[:2] == ("extinction", "oxygen-limit")
+    out = norm.classify_outcome(
+        "flame extinguished by co2 flood discharge", None)
+    assert out[:2] == ("extinction", "suppressant")
 
 
 def test_flex_shared_cir_pairs_by_test_number(monkeypatch, tmp_path):

@@ -7,16 +7,30 @@ on:
 jobs:
   cpp-engine:
     runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install pybind11
+      - name: install ccache
+        run: command -v ccache >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ccache)
+      # content-addressed compiler cache — survives fresh checkouts, unlike a
+      # build-dir cache where source mtimes are always newer than objects
+      - name: restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-py312-${{ hashFiles('core/CMakeLists.txt', 'core/src/**', 'core/bindings/**', 'core/include/**', 'core/tests/**') }}
+          restore-keys: ccache-${{ runner.os }}-py312-
       - name: build + test C++ core
         run: |
           cd core
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j
           ./build/test_physics
 
@@ -33,12 +47,29 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install -r backend/requirements.txt pytest
+      - name: install ccache
+        run: command -v ccache >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ccache)
+      - name: restore ccache (shared with cpp-engine job)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-py312-${{ hashFiles('core/CMakeLists.txt', 'core/src/**', 'core/bindings/**', 'core/include/**', 'core/tests/**') }}
+          restore-keys: ccache-${{ runner.os }}-py312-
+      - name: build C++ engine (ccache makes recompiles near-instant)
+        run: |
+          cd core
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build -j
       - run: python -m pytest backend/tests -q
 
   frontend:
@@ -55,4 +86,22 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.74'
+          actions-cache-folder: emsdk-cache
+      - name: build wasm + embind smoke test
+        run: |
+          emcmake cmake -S core -B core/build-wasm -DEMSCRIPTEN=ON
+          cmake --build core/build-wasm --target ffengine_wasm -j
+          node core/tests/wasm_smoke.mjs

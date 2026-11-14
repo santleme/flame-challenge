@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 pybind11>=2.13
 pydantic>=2.8
 duckdb>=1.1
+httpx2>=0.28  # starlette>=1.10 TestClient transport (backend/tests)

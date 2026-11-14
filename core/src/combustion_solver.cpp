@@ -9,6 +9,9 @@ namespace {
 // adiabatic flame temperature envelope for hydrocarbon diffusion flames
 constexpr double T_FLAME_MAX = 2300.0; // K
 constexpr double T_COOL_FLAME = 800.0; // K — cool flames sit ~500–800 K
+// stochastic cool→hot flashback rate, 1/s — FLEX cool flames can reignite
+// within seconds once the atmosphere is restored above the LOC
+constexpr double COOL_REIGNITION_RATE = 0.5;
 } // namespace
 
 double DropletFlame::nextRandom() {
@@ -20,6 +23,9 @@ double DropletFlame::nextRandom() {
 
 void DropletFlame::configure(const Config& cfg) {
     c_ = cfg;
+    // a non-positive diameter is a degenerate "no fuel" experiment — the
+    // droplet starts at burnFraction 1.0 and extinguishes on the first step;
+    // callers should never pass this, but clamping keeps the state sane
     c_.dropletD0Mm = std::max(0.0, cfg.dropletD0Mm);
     rng_ = cfg.seed ? cfg.seed : 1u;
     s_ = State{};
@@ -31,8 +37,8 @@ void DropletFlame::configure(const Config& cfg) {
 }
 
 void DropletFlame::updateAtmosphere(double o2Pct, double pressureKpa) {
-    c_.o2Pct = o2Pct;
-    c_.pressureKpa = pressureKpa;
+    c_.o2Pct = std::clamp(o2Pct, 0.0, 100.0);
+    c_.pressureKpa = std::max(0.0, pressureKpa);
 }
 
 // remaining droplet mass ∝ d³ (constant-density sphere), so the consumed
@@ -116,7 +122,8 @@ void DropletFlame::step(double dtSec) {
         } else if (coolPhaseT_ > 8.0 + nextRandom() * 6.0) {
             s_.heatReleaseW = 0;
             transition(Regime::Extinguished);
-        } else if (c_.o2Pct > c_.material.locPct && nextRandom() < dtSec * 0.5) {
+        } else if (c_.o2Pct > c_.material.locPct &&
+                   nextRandom() < dtSec * COOL_REIGNITION_RATE) {
             transition(Regime::HotFlame);
         }
         break;

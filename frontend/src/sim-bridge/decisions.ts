@@ -52,7 +52,7 @@ const O2_SCALE = 5.0
 const FLOW_SCALE = 20.0
 const O2_MISSING_PENALTY = 1.0
 
-const AFFINITY = { exact: 0, alias: 0.15, cls: 0.5, unknown: 0.75, other: 1.5 }
+const AFFINITY = { exact: 0, alias: 0.15, cls: 0.5, unknown: 1.05, other: 1.5 }
 
 const MATERIAL_ALIASES: Record<string, string[]> = {
   cotton: ['sibal', 'cotton', 'fiberglass'],

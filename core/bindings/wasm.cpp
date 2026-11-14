@@ -9,6 +9,16 @@
 using namespace emscripten;
 using namespace ff;
 
+namespace {
+// embind can't deduce lambdas taking `const Class& self` on older emsdk —
+// bind a plain free function pointer instead (instance is arg 0)
+double riskIgnitionPressure(const MaterialRisk& self, const std::string& id,
+                            double o2) {
+    const Material* m = self.get(id);
+    return m ? MaterialRisk::ignitionPressure(*m, o2) : -1.0;
+}
+}  // namespace
+
 EMSCRIPTEN_BINDINGS(freefall_engine) {
     // value types returned by the collection APIs below — embind throws
     // UnboundTypeError at call time for any unregistered return type
@@ -29,11 +39,7 @@ EMSCRIPTEN_BINDINGS(freefall_engine) {
         .constructor<>()
         .function("loadJson", &MaterialRisk::loadJson)
         .function("all", &MaterialRisk::all)
-        .function("ignitionPressure", [](const MaterialRisk& self,
-                                         const std::string& id, double o2) {
-            const Material* m = self.get(id);
-            return m ? MaterialRisk::ignitionPressure(*m, o2) : -1.0;
-        });
+        .function("ignitionPressure", &riskIgnitionPressure);
 
     value_object<Chamber::Config>("ChamberConfig")
         .field("investigationId", &Chamber::Config::investigationId)

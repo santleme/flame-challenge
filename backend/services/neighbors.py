@@ -34,7 +34,10 @@ O2_MISSING_PENALTY = 1.0
 AFFINITY_EXACT = 0.0
 AFFINITY_ALIAS = 0.15    # fuel string names the same substance
 AFFINITY_CLASS = 0.5     # same physical class (liquid / gas / solid)
-AFFINITY_UNKNOWN = 0.75  # row can't be classified (no fuel/material)
+# > O2_MISSING_PENALTY — an unclassifiable row (no fuel, no material_id)
+# must not outrank a confirmed same-material run just because the latter
+# lacks an O₂ reading; < AFFINITY_OTHER since it's neutral, not mismatch
+AFFINITY_UNKNOWN = 1.05
 # > O2_MISSING_PENALTY so a same-material run with unrecorded O₂ still
 # beats a different-class run at the exact point — material class is the
 # strongest physical signal for "closest real test"

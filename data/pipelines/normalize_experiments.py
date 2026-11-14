@@ -135,28 +135,52 @@ def fuel_id(name: str | None) -> str | None:
     return re.sub(r"[^a-z0-9]+", "-", n).strip("-") or None
 
 
-def cool_flame_observed(text: str) -> bool:
-    """Affirmative cool-flame evidence in free text.
+def _affirmative_mention(text: str, pattern: str) -> bool:
+    """True when `pattern` is mentioned affirmatively.
 
-    Explicit negative observations ("No cool flame detected.", "cool flame
-    was not observed") do NOT count — a recorded non-observation is real
-    evidence, not a positive detection.
+    Explicit negative observations ("No cool flame detected.", "no evidence
+    of a cool flame", "cool flame was not observed") do NOT count — a
+    recorded non-observation is real evidence, not a positive detection.
+    Negation scopes only within the current clause and cannot jump a
+    conjunction ("no ignition and a cool flame" is affirmative).
     """
-    for m in re.finditer(r"cool[ -]?flames?", text, re.IGNORECASE):
-        # negation scopes only within the current clause and when it
-        # directly precedes the mention ("No cool flame", "no evidence of
-        # cool flame") — not across ";" boundaries ("No ignition occurred;
-        # a cool flame followed")
+    for m in re.finditer(pattern, text, re.IGNORECASE):
+        # scan back to the nearest clause boundary — "No ignition occurred;
+        # a cool flame followed" must not carry the "No" across ";"
         seg = re.split(r"[.!?;:]", text[max(0, m.start() - 60):m.start()])[-1]
+        # a negation word ending the clause up to 4 words back counts, but
+        # conjunctions sever it ("no ignition and a cool flame" is positive)
         if re.search(r"\b(?:no|not|never|without|absent|none)\b"
-                     r"(?:\s+\w+){0,2}\s*$", seg, re.IGNORECASE):
+                     r"(?:\s+(?!and|but|or)\w+){0,4}\s*$", seg, re.IGNORECASE):
             continue                                   # negated mention
         head = " ".join(text[m.end():m.end() + 60].lower().split()[:4])
         if re.match(r"[\s,;:()\-]*(?:was|were|is|has been|could be|"
-                    r"seemed|appeared|remained)?\s*not\b", head):
+                    r"seemed|appeared|remained)?\s*(?:not|never)\b", head):
             continue             # "cool flame was not ..." / ", not ..."
         return True
     return False
+
+
+# extinction language excluding the nouns for suppression equipment —
+# "extinguisher"/"extinguishant" are not extinction observations
+_EXTINCTION_WORDS = (
+    r"\b(?:extinct|extinction|extinguished|extinguishes|extinguishing|"
+    r"extinguishment)\b")
+
+# suppression-agent evidence: an explicit "suppress…" mention, or a gas
+# (co2 / carbon dioxide) acting within ~1 word of an extinguishing verb —
+# never a bare ambient-mixture mention like "0.12/0.49/0.40 O2/N2/CO2"
+_SUPPRESSANT_EVIDENCE = re.compile(
+    r"suppress|"
+    r"(?:co2|carbon dioxide)\W{0,4}\w{0,12}\W{0,4}"
+    r"(?:flood|discharge|agent|extin)|"
+    r"(?:flood|discharge|agent|extin)\w*\W{0,4}\w{0,12}\W{0,4}"
+    r"(?:co2|carbon dioxide)")
+
+
+def cool_flame_observed(text: str) -> bool:
+    """Affirmative cool-flame evidence in free text."""
+    return _affirmative_mention(text, r"cool[ -]?flames?")
 
 
 def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str, bool]:
@@ -166,22 +190,33 @@ def classify_outcome(comments: str, dext: float | str | None) -> tuple[str, str,
     if re.search(r"did not ignite|failed to ignite|no ignition|would not ignite|"
                  r"not ignite|non-?ignition", c):
         return "no-ignition", "none", cool
-    if re.search(r"radiative extinction|radiative extinction", c):
+    # radiative regime in all corpus wordings — "radiatively
+    # extinguishing", "extinguishes due to radiative loss", "likely
+    # radiative extinction" — not just the literal 'radiative extinction'
+    if re.search(r"radiativ\w*(?:\s+\w+){0,2}\s+extin\w*|"
+                 r"extin\w*(?:\s+\w+){0,2}\s+radiativ\w*|"
+                 r"radiativ\w*\s+loss", c):
         return "extinction", "radiative", cool
     if re.search(r"blow.?off|blows? out", c):
         return "extinction", "blow-off", cool
-    # a positive measured extinction diameter is direct evidence; Dext=0.00
-    # is the FLEX sentinel for "no extinction observed" (data dictionary),
-    # NOT an extinction — completed burns record zero.
-    if re.search(r"extin[gc]", c) or (isinstance(dext, float) and dext > 0):
+    # affirmative extinction language only — "no extinction observed",
+    # "fire extinguisher present" and negated mentions must not count;
+    # a positive measured Dext is direct evidence on its own
+    if _affirmative_mention(c, _EXTINCTION_WORDS) or \
+            (isinstance(dext, float) and dext > 0):
         if cool:
             return "extinction", "cool-flame", True
-        return "extinction", "oxygen-limit" if "oxygen" in c else "suppressant" \
-            if ("co2" in c or "suppress" in c) else "oxygen-limit", cool
+        # suppressant needs suppression EVIDENCE — ambient "O2/N2/CO2"
+        # composition text is not an extinguishing agent observation
+        if _SUPPRESSANT_EVIDENCE.search(c):
+            return "extinction", "suppressant", cool
+        return "extinction", "oxygen-limit", cool
     if "disruption" in c or "burns? to disruption" in c:
         return "disruption", "none", cool
     if re.search(r"burn(ed|s|t)? (to completion|completely|out)|complete burn", c):
         return "burnout", "none", cool
+    # Dext=0.00 is the FLEX sentinel for "no extinction observed" (data
+    # dictionary), NOT an extinction — completed burns record zero
     if isinstance(dext, float) and dext == 0:
         return "burnout", "none", cool
     return "unknown", "none", cool
@@ -501,62 +536,111 @@ def _flex_end_outcome(r: dict, comments: str = "") -> tuple[str, str]:
 
 
 def _flex_test_num(test_id: str | None) -> int | None:
-    """Test sequence number — 'FLEX-070' → 70, and experimental_runs
-    data_id '70; 193F001' → 70. CIR numbers are NOT unique in the
-    corpus (FLEX-070/073 share 193F001); the sequence number is."""
+    """Sequence number inside one id — 'FLEX-070' → 70,
+    '70; 193F001' → 70. Only corroborates a shared-CIR tie: the two
+    tables number tests differently, so it must never be the join key."""
     m = re.search(r"(\d+)", (test_id or "").split(";")[0])
     return int(m.group(1)) if m else None
 
 
-def _flex_points_nums() -> set[int]:
-    """Test numbers present in flex_test_points.csv — the richer
-    per-test table. experimental_runs rows for the same test must not
-    double-count (its data_id carries the number before the CIR)."""
-    path = LEGACY_DIR / "flex_test_points.csv"
-    if not path.exists():
-        return set()
-    return {n for n in (_flex_test_num(r.get("test_id"))
-                       for r in csv.DictReader(
-                           path.open(encoding="utf-8", errors="replace")))
-            if n is not None}
+def _run_gmt(r: dict) -> str:
+    """Summary-row test time from extra_json — 'Test GMT'."""
+    try:
+        return str(json.loads(r.get("extra_json") or "{}")
+                   .get("Test GMT") or "").strip()
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return ""
 
 
-def _flex_runs_meta() -> tuple[dict[int, dict], dict[str, list[dict]]]:
-    """PSI-69 experimental_runs rows — the authoritative outcome
-    metadata (Test end, ignition/cool flags, burn time) for the
-    richer flex_test_points physics rows — keyed by test number
-    (primary pairing) and by CIR (fallback; may collide)."""
-    path = LEGACY_DIR / "experimental_runs.csv"
-    by_num: dict[int, dict] = {}
+def _point_gmt(p: dict) -> str:
+    """Test-point time '19:12:27 (GMT)' → '19:12:27'."""
+    return re.sub(r"\s*\([^)]*\)\s*", " ", p.get("test_time") or "").strip()
+
+
+def _fuel_key(s: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+
+def _flex_pairing() -> dict[str, dict]:
+    """Resolved flex_test_points test_id → experimental_runs summary row.
+
+    The join key is the CIR test number — the experiment identifier both
+    tables share. Sequence numbers are NOT usable: the tables number
+    tests differently (FLEX-157 is summary '156; C03H401', not '157;').
+    Shared-CIR collisions (FLEX-070/073 under 193F001) are corroborated
+    by test time, then fuel, then sequence; points without a CIR join on
+    a unique test GMT. Unresolvable points get no summary metadata
+    rather than another experiment's.
+    """
+    ppath = LEGACY_DIR / "flex_test_points.csv"
+    rpath = LEGACY_DIR / "experimental_runs.csv"
+    if not ppath.exists():
+        return {}
+    runs: list[dict] = []
+    if rpath.exists():
+        for r in csv.DictReader(rpath.open(encoding="utf-8", errors="replace")):
+            if (r.get("accession") or "").strip() == "PSI-69":
+                runs.append(r)
     by_cir: dict[str, list[dict]] = {}
-    if not path.exists():
-        return by_num, by_cir
-    for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
-        if (r.get("accession") or "").strip() != "PSI-69":
-            continue
+    by_gmt: dict[str, list[dict]] = {}
+    for r in runs:
         parts = (r.get("data_id") or "").split(";")
-        n = _flex_test_num(r.get("data_id"))
-        if n is not None:
-            by_num.setdefault(n, r)
         if len(parts) > 1 and parts[1].strip():
             by_cir.setdefault(parts[1].strip(), []).append(r)
-    return by_num, by_cir
+        g = _run_gmt(r)
+        if g:
+            by_gmt.setdefault(g, []).append(r)
+
+    pairs: dict[str, dict] = {}
+    for p in csv.DictReader(ppath.open(encoding="utf-8", errors="replace")):
+        cir = (p.get("cir_test_number") or "").strip()
+        cands = by_cir.get(cir, []) if cir else []
+        m = cands[0] if len(cands) == 1 else None
+        if m is None and len(cands) > 1:
+            # shared CIR — corroborate: test GMT, then fuel, then seq num
+            g = _point_gmt(p)
+            hit = [r for r in cands if g and _run_gmt(r) == g]
+            if len(hit) == 1:
+                m = hit[0]
+            else:
+                cands = hit or cands
+                f = _fuel_key(p.get("fuel_or_material"))
+                hit = [r for r in cands if f and _fuel_key(
+                    r.get("fuel_or_material") or r.get("fuel_bottle")) == f]
+                if len(hit) == 1:
+                    m = hit[0]
+                else:
+                    n = _flex_test_num(p.get("test_id"))
+                    hit = [r for r in (hit or cands)
+                           if _flex_test_num(r.get("data_id")) == n]
+                    if len(hit) == 1:
+                        m = hit[0]
+        if m is None and not cands:
+            # no CIR candidate — a shared test GMT is still a unique join
+            hit = by_gmt.get(_point_gmt(p), [])
+            if len(hit) == 1:
+                m = hit[0]
+        if m is not None:
+            pairs[(p.get("test_id") or "").strip()] = m
+    return pairs
 
 
 def parse_legacy_runs(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "experimental_runs.csv"
     if not path.exists():
         return []
-    flex_nums = _flex_points_nums()
+    # summary rows consumed by the resolved point→summary pairing —
+    # skipping by anything else (sequence numbers, raw CIR overlap)
+    # either keeps a consumed duplicate or drops a runs-only test
+    flex_consumed = {(m.get("data_id") or "").strip()
+                     for m in _flex_pairing().values()}
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
         if not acc or acc in covered or acc not in ACCESSIONS:
             continue
-        if acc == "PSI-69":
-            n = _flex_test_num(r.get("data_id"))
-            if n is not None and n in flex_nums:
-                continue  # emitted by parse_legacy_flex with richer fields
+        if acc == "PSI-69" and (r.get("data_id") or "").strip() in flex_consumed:
+            continue  # emitted by parse_legacy_flex with richer fields
         inv = ACCESSIONS[acc][0]
         fuel = (r.get("fuel_or_material") or r.get("fuel_bottle") or "").strip() or None
         comments = (r.get("comments") or r.get("notes") or "").strip()
@@ -628,7 +712,7 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "flex_test_points.csv"
     if not path.exists():
         return []
-    by_num, by_cir = _flex_runs_meta()
+    pairs = _flex_pairing()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
@@ -637,13 +721,8 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
         inv = ACCESSIONS[acc][0]
         comments = (r.get("comments") or "").strip()
         dext = _num1(r.get("dext_mm"))
-        # pair by test number (unique); a shared CIR only pairs when
-        # it maps to exactly one summary row
-        n = _flex_test_num(r.get("test_id"))
-        m = by_num.get(n) if n is not None else None
-        if m is None:
-            cands = by_cir.get((r.get("cir_test_number") or "").strip(), [])
-            m = cands[0] if len(cands) == 1 else None
+        # resolved CIR-first pairing — never a bare sequence-number join
+        m = pairs.get((r.get("test_id") or "").strip())
         burn_time = None
         if m is not None:
             # the summary row carries the authoritative end state — its

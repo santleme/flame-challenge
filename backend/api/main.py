@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from backend.services import engine_bridge as eb
 from backend.services import neighbors, rag, risk, tactics
@@ -24,23 +28,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Physical bounds for atmosphere/config inputs. O₂ is a percentage; the
+# calibrated flow data tops out ~70 cm/s and pressures are 57–101 kPa, so
+# the upper bounds below leave generous headroom while still rejecting
+# pathological values (negative, NaN/inf, >32-bit seeds) with a 422
+# instead of letting them reach the engine as a 500.
+_O2 = {"ge": 0.0, "le": 100.0, "allow_inf_nan": False}
+_FLOW = {"ge": 0.0, "le": 300.0, "allow_inf_nan": False}
+_PRESSURE = {"ge": 1.0, "le": 300.0, "allow_inf_nan": False}
+_SEED = {"ge": 0, "le": 4_294_967_295}  # C++ unsigned int
+
+
+@app.exception_handler(eb.UnknownInvestigationError)
+def unknown_investigation(_: Request,
+                          exc: eb.UnknownInvestigationError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+def _json_safe(value):
+    """Replace non-finite floats recursively so the payload serializes —
+    a rejected `1e309`/`NaN` input would otherwise turn the 422 into a 500."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")[:2000]
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    # same shape as FastAPI's default 422 handler, but sanitized
+    try:
+        content = jsonable_encoder({"detail": _json_safe(exc.errors()),
+                                    "body": _json_safe(exc.body)})
+    except Exception:
+        content = {"detail": "Invalid request body",
+                   "type": "request_validation"}
+    return JSONResponse(status_code=422, content=content)
+
 
 class PreviewReq(BaseModel):
     investigationId: str
-    o2Pct: float
-    flowCms: float | None = None
+    o2Pct: float = Field(**_O2)
+    flowCms: float | None = Field(default=None, **_FLOW)
+    pressureKpa: float | None = Field(default=None, **_PRESSURE)
 
 
 class ChamberReq(BaseModel):
     investigationId: str
-    o2Pct: float
-    flowCms: float | None = None
-    seed: int = 1
+    o2Pct: float = Field(**_O2)
+    flowCms: float | None = Field(default=None, **_FLOW)
+    pressureKpa: float | None = Field(default=None, **_PRESSURE)
+    seed: int = Field(default=1, **_SEED)
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "engine": "c++", "module": "freefall_engine"}
+    return {"ok": True, "engine": eb.ENGINE, "module": eb.MODULE}
 
 
 @app.get("/api/materials")
@@ -50,7 +98,8 @@ def get_materials() -> dict:
 
 @app.post("/api/chamber/preview")
 def chamber_preview(req: PreviewReq) -> dict:
-    return eb.preview(req.investigationId, req.o2Pct, req.flowCms)
+    return eb.preview(req.investigationId, req.o2Pct, req.flowCms,
+                      req.pressureKpa)
 
 
 # ---------- SI layer: retrieval, SQL-RAG, risk simulator ----------
@@ -62,8 +111,8 @@ class AskReq(BaseModel):
 
 class RiskReq(BaseModel):
     materialId: str = "pmma"
-    o2Pct: float = 21.0
-    flowCms: float = 0.0
+    o2Pct: float = Field(default=21.0, **_O2)
+    flowCms: float = Field(default=0.0, **_FLOW)
     gravity: str = "microgravity"
 
 
@@ -88,15 +137,24 @@ def api_risk(req: RiskReq) -> dict:
 
 
 @app.get("/api/risk")
-def api_risk_get(materialId: str = "pmma", o2Pct: float = 21.0,
-                 flowCms: float = 0.0, gravity: str = "microgravity") -> dict:
+def api_risk_get(materialId: str = "pmma",
+                 o2Pct: float = Query(21.0, ge=0.0, le=100.0,
+                                      allow_inf_nan=False),
+                 flowCms: float = Query(0.0, ge=0.0, le=300.0,
+                                        allow_inf_nan=False),
+                 gravity: str = "microgravity") -> dict:
     return risk.risk_index(materialId, o2Pct, flowCms, gravity)
 
 
 @app.get("/api/risk/curve")
-def api_risk_curve(materialId: str = "pmma", flowCms: float = 0.0,
+def api_risk_curve(materialId: str = "pmma",
+                   flowCms: float = Query(0.0, ge=0.0, le=300.0,
+                                          allow_inf_nan=False),
                    gravity: str = "microgravity",
-                   o2Min: float = 8.0, o2Max: float = 40.0) -> dict:
+                   o2Min: float = Query(8.0, ge=0.0, le=100.0,
+                                        allow_inf_nan=False),
+                   o2Max: float = Query(40.0, ge=0.0, le=100.0,
+                                        allow_inf_nan=False)) -> dict:
     return risk.curve(materialId, flowCms, gravity, o2Min, o2Max)
 
 
@@ -146,11 +204,13 @@ async def chamber_ws(ws: WebSocket) -> None:
     await ws.accept()
     try:
         req = ChamberReq(**json.loads(await ws.receive_text()))
-        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms, req.seed)
+        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms,
+                             req.seed, req.pressureKpa)
         dt = 1.0 / 30.0
         deadline = time.monotonic() + 60
         while not ch.finished() and time.monotonic() < deadline:
-            ch.step(dt)
+            # the pure-Python fallback is CPU-bound — keep the event loop free
+            await asyncio.to_thread(ch.step, dt)
             events = ch.drain_events()
             payload = json.loads(ch.state_json())
             if events:

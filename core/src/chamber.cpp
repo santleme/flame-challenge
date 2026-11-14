@@ -1,5 +1,6 @@
 #include "chamber.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -39,11 +40,13 @@ void Chamber::configure(const Config& cfg) {
 }
 
 void Chamber::updateAtmosphere(double o2Pct, double flowCms, double pressureKpa) {
-    cfg_.o2Pct = o2Pct;
-    cfg_.flowCms = flowCms;
-    cfg_.pressureKpa = pressureKpa;
-    droplet_.updateAtmosphere(o2Pct, pressureKpa);
-    spread_.updateAtmosphere(o2Pct, flowCms, pressureKpa);
+    // clamp here so the public state (ignitionPressure, config()) never
+    // reports unphysical values; the sub-models clamp independently
+    cfg_.o2Pct = std::clamp(o2Pct, 0.0, 100.0);
+    cfg_.flowCms = std::max(0.0, flowCms);
+    cfg_.pressureKpa = std::max(0.0, pressureKpa);
+    droplet_.updateAtmosphere(cfg_.o2Pct, cfg_.pressureKpa);
+    spread_.updateAtmosphere(cfg_.o2Pct, cfg_.flowCms, cfg_.pressureKpa);
 }
 
 double Chamber::ignitionPressure() const {

@@ -13,11 +13,14 @@ Two channels, one interface:
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import threading
 from collections import Counter
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "data" / "processed" / "search_index.json"
@@ -54,10 +57,14 @@ TOPIC_DEFAULTS = {
     "partial gravity": "flare",
 }
 
+# fuel grounding — keep in sync with FUEL_ID in normalize_experiments.py;
+# "methane" must precede "ethane" or "methane" mis-extracts as "ethane"
 FUEL_RE = re.compile(
-    r"heptane|methanol|meoh|iso.?octane|decane|decanol|nonane|ethylene|"
-    r"methane|propane|jp.?8|pmma|acrylic|cotton|sibal|nomex|polycarbonate|"
-    r"teflon|kapton|pyrell|silicone|cellulose|paper", re.IGNORECASE)
+    r"heptane?|methanol|meoh|ethanol|butanol|iso.?octane|decanol|decane|"
+    r"nonane|ethylene|c2h4|methane|ch4|ethane|c2h6|propane|c3h8|butane|"
+    r"c4h10|jp.?8|jet|pmma|acrylic|cotton|sibal|nomex|polycarbonate|"
+    r"teflon|kapton|pyrell|silicone|cellulose|paper|cardboard",
+    re.IGNORECASE)
 
 _docs: list[dict] = []
 _idf: dict[str, float] = {}
@@ -91,18 +98,23 @@ def _load() -> None:
                 _duck.execute(
                     "CREATE TABLE experiments AS SELECT * FROM read_csv_auto(?, "
                     "header=true)", [str(EXPERIMENTS)])
-            except Exception:  # noqa: BLE001 - duckdb optional; degrade to search only
+            except Exception as exc:  # noqa: BLE001 - degrade to search only
+                logger.warning("duckdb unavailable, sql-rag disabled: %s", exc)
                 _duck = None
 
 
-def _duck_query(sql: str) -> tuple[list[tuple], list[str]]:
+def _duck_query(sql: str, params: list | None = None
+                ) -> tuple[list[tuple], list[str]]:
     """Run a read query on an isolated cursor; returns (rows, col_names)."""
     with _lock:
         cur = _duck.cursor()
-        cur.execute(sql)
-        rows = cur.fetchall()
-        cols = [c[0] for c in cur.description]
-        return rows, cols
+        try:
+            cur.execute(sql, params or [])
+            rows = cur.fetchall()
+            cols = [c[0] for c in cur.description]
+            return rows, cols
+        finally:
+            cur.close()
 
 
 def reload() -> None:
@@ -218,21 +230,29 @@ def _sql_answer(q: str, terms: list[str], inv: str | None,
     if _duck is None:
         return None
     low = q.lower()
-    inv_clause = f"AND investigation_id = '{inv}'" if inv else ""
-    fuel_clause = f"AND lower(fuel) LIKE '%{fuel}%'" if fuel else ""
+    # dynamic filters are bound parameters — never interpolate question
+    # text (or anything derived from it) into SQL
+    where_extra: list[str] = []
+    params: list = []
+    if inv:
+        where_extra.append("investigation_id = ?")
+        params.append(inv)
+    if fuel:
+        where_extra.append("lower(fuel) LIKE ?")
+        params.append(f"%{fuel}%")
+    extra = (" AND " + " AND ".join(where_extra)) if where_extra else ""
     burned = "outcome IN ('burnout','disruption')"
-    extinct = "outcome IN ('extinction','no-ignition')"
 
-    def run(sql: str):
-        rows, cols = _duck_query(sql)
+    def run(sql: str, ps: list | None = None):
+        rows, cols = _duck_query(sql, ps)
         return [dict(zip(cols, r)) for r in rows]
 
     try:
         if re.search(r"lowest|minimum|min\b|least", low) and "o2" in low:
             rows = run(
                 "SELECT run_id, accession, fuel, o2_pct, outcome, source_file "
-                f"FROM experiments WHERE {burned} {fuel_clause} {inv_clause} "
-                "ORDER BY o2_pct ASC LIMIT 5")
+                f"FROM experiments WHERE {burned}{extra} "
+                "ORDER BY o2_pct ASC LIMIT 5", params)
             if rows:
                 top = rows[0]
                 answer = (f"Lowest O2 that still sustained combustion: "
@@ -246,8 +266,8 @@ def _sql_answer(q: str, terms: list[str], inv: str | None,
                 where += " AND cool_flame = true"
             rows = run(
                 "SELECT investigation_id, accession, COUNT(*) AS runs "
-                f"FROM experiments WHERE {where} {inv_clause} {fuel_clause} "
-                "GROUP BY 1,2 ORDER BY runs DESC")
+                f"FROM experiments WHERE {where}{extra} "
+                "GROUP BY 1,2 ORDER BY runs DESC", params)
             if rows:
                 total = sum(r["runs"] for r in rows)
                 answer = (f"{total} matching test runs across "
@@ -256,9 +276,9 @@ def _sql_answer(q: str, terms: list[str], inv: str | None,
         if re.search(r"burn(ing)? rate|k ?avg|fastest", low):
             rows = run(
                 "SELECT run_id, accession, fuel, o2_pct, burn_rate_mm2_s "
-                "FROM experiments WHERE burn_rate_mm2_s IS NOT NULL "
-                f"{fuel_clause} {inv_clause} "
-                "ORDER BY burn_rate_mm2_s DESC LIMIT 5")
+                "FROM experiments WHERE burn_rate_mm2_s IS NOT NULL"
+                f"{extra} "
+                "ORDER BY burn_rate_mm2_s DESC LIMIT 5", params)
             if rows:
                 top = rows[0]
                 answer = (f"Highest measured burning-rate constant: "
@@ -268,19 +288,20 @@ def _sql_answer(q: str, terms: list[str], inv: str | None,
         if "cool flame" in low:
             rows = run(
                 "SELECT run_id, accession, fuel, o2_pct, outcome "
-                "FROM experiments WHERE cool_flame = true "
-                f"{fuel_clause} {inv_clause} LIMIT 6")
+                f"FROM experiments WHERE cool_flame = true{extra} "
+                "LIMIT 6", params)
             if rows:
                 total = run(
                     "SELECT COUNT(*) AS n FROM experiments "
-                    f"WHERE cool_flame = true {fuel_clause} {inv_clause}")[0]["n"]
+                    f"WHERE cool_flame = true{extra}", params)[0]["n"]
                 fuels = sorted({r["fuel"] for r in rows if r.get("fuel")})
                 return {"answer": f"{total} cool-flame runs in the PSI "
                                   f"corpus (fuels: {', '.join(fuels)}). "
                                   "Cool flames burn below detection — a "
                                   "key hidden-fire hazard.",
                         "sql": True, "rows": rows}
-    except Exception:  # noqa: BLE001 - fall back to retrieval
+    except Exception as exc:  # noqa: BLE001 - fall back to retrieval
+        logger.warning("sql-rag failed, using retrieval fallback: %s", exc)
         return None
     return None
 

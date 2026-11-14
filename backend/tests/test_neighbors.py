@@ -59,9 +59,13 @@ def test_ethane_does_not_alias_methane():
 
 
 def test_ethanol_does_not_alias_methanol():
-    out = neighbors.nearest("ethanol", 21.0, 0.0, k=3)
-    for n in out:
-        assert "methanol" not in (n["fuel"] or "").lower()
+    # methanol is a same-CLASS neighbor for ethanol, never an alias —
+    # the regression was substring matching ('ethanol' inside 'methanol')
+    assert neighbors._affinity("ethanol", "methanol", "Methanol") \
+        == neighbors.AFFINITY_CLASS
+    # while real ethanol wording in the fuel text still earns the alias
+    assert neighbors._affinity("ethanol", "methanol", "Ethanol (pure)") \
+        == neighbors.AFFINITY_ALIAS
 
 
 def test_hyphenated_aliases_match_fuel_text():

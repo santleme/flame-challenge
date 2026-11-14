@@ -30,6 +30,15 @@ DATASET_PATH = REPO / "frontend" / "src" / "data" / "investigations.json"
 STRUCTURED_DIR = ROOT / "raw" / "structured"
 STARTER_PATH = ROOT / "investigations.starter.json"
 
+
+def _rel(path: Path) -> str:
+    """repo-relative display path; falls back to absolute when the path
+    lives outside the repo (monkeypatched tests, relocated outputs)"""
+    try:
+        return path.relative_to(REPO).as_posix()
+    except ValueError:
+        return str(path)
+
 # Keep a pristine copy of the starter dataset for --sample restores.
 def ensure_starter_backup() -> None:
     if not STARTER_PATH.exists() and DATASET_PATH.exists():
@@ -41,7 +50,7 @@ def restore_starter() -> None:
     ensure_starter_backup()
     if STARTER_PATH.exists():
         shutil.copy(STARTER_PATH, DATASET_PATH)
-        print(f"[OK] starter dataset restored -> {DATASET_PATH.relative_to(REPO)}")
+        print(f"[OK] starter dataset restored -> {_rel(DATASET_PATH)}")
     else:
         print("[FAIL] no starter backup found", file=sys.stderr)
         sys.exit(1)
@@ -90,7 +99,7 @@ def merge_structured() -> None:
     DATASET_PATH.write_text(
         json.dumps(dataset, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    print(f"[OK] merged {len(records)} records -> {DATASET_PATH.relative_to(REPO)}")
+    print(f"[OK] merged {len(records)} records -> {_rel(DATASET_PATH)}")
 
 
 def main() -> int:

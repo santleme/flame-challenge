@@ -161,7 +161,7 @@ def main() -> int:
         "materials": sorted(materials.values(), key=lambda m: m["id"]),
         "investigations": inv_map,
     }
-    OUT.write_text(json.dumps(payload, indent=2))
+    OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
     # risk profile weights — consumed identically by the C++ bridge and
     # the TS fallback, so both engines score risk the same way.
@@ -190,7 +190,8 @@ def main() -> int:
             "persistenceLowO2": 20,
         },
     }
-    RISK_OUT.write_text(json.dumps(risk_profiles, indent=2))
+    RISK_OUT.write_text(json.dumps(risk_profiles, indent=2,
+                                     ensure_ascii=False) + "\n")
 
     # psi_experiments.json — flat quantitative records for the UI and the
     # C++ bridge (curves straight from the PSI-derived dataset).
@@ -226,13 +227,16 @@ def main() -> int:
         ],
     }
     PSI_OUT = ROOT / "shared" / "calibrated-data" / "psi_experiments.json"
-    PSI_OUT.write_text(json.dumps(psi_experiments, indent=2))
+    PSI_OUT.write_text(json.dumps(psi_experiments, indent=2,
+                                  ensure_ascii=False) + "\n")
 
     # bundle copies for the frontend (shared/ stays canonical)
-    (FRONTEND_DATA / "calibration.json").write_text(json.dumps(payload))
-    (FRONTEND_DATA / "risk_profiles.json").write_text(json.dumps(risk_profiles))
+    (FRONTEND_DATA / "calibration.json").write_text(
+        json.dumps(payload, ensure_ascii=False) + "\n")
+    (FRONTEND_DATA / "risk_profiles.json").write_text(
+        json.dumps(risk_profiles, ensure_ascii=False) + "\n")
     (FRONTEND_DATA / "psi_experiments.json").write_text(
-        json.dumps(psi_experiments))
+        json.dumps(psi_experiments, ensure_ascii=False) + "\n")
     # authored scenario/tech contracts: shared/ is the edit target, the
     # pipeline mirrors them into the bundle.
     for authored in ("historical_scenarios.json", "tech_spinoffs.json"):
