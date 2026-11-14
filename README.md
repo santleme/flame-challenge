@@ -42,7 +42,8 @@ core/      C++20 physics: droplet d²-law (FLEX), SAFFIRE spread,
                   ACME material risk + pybind11 + (Emscripten-ready)
 data/    NASA PSI/NTRS ETL → experiments.csv, search index, risk model
 backend/      FastAPI bridge: /api/chamber/preview, WS /ws/chamber,
-                  /api/search, /api/ask, /api/risk(+curve/materials)
+                  /api/search, /api/ask, /api/risk(+curve/materials),
+                  /api/risk/rank, /api/tactical/advise
 frontend/     React + TypeScript + PixiJS game client
 docs/             ARCHITECTURE.md, DATA_PIPELINE.md,
                   NASA_PSI_REFERENCES.md, challenge brief
@@ -70,3 +71,26 @@ O₂ × ventilation × material × gravity). Recipe: `docs/DATA_PIPELINE.md`.
 
 See `docs/ARCHITECTURE.md` for the data flow and
 `docs/NASA_PSI_REFERENCES.md` for the mechanic→dataset mapping.
+
+## 30-second demo script
+
+| t | screen | narration |
+|---|---|---|
+| 0–5 s | isometric shipyard, crew working | "Freefall Foundry — an orbital shipyard where every fire follows real NASA microgravity data." |
+| 5–10 s | Presets → **FLEX — Heptane Droplet** starts in the chamber | "Run the actual FLEX-2 record: heptane, 21% O₂, the C++ engine solving d²-law at 30 Hz." |
+| 10–15 s | O₂/flow dials; ignition dial climbs | "Push past the limiting oxygen concentration and the NASA-calibrated risk model pushes back." |
+| 15–20 s | fire breaks out — streamlines turn **orange** | "Ventilation was feeding it — opposed-flow spread, straight out of SAFFIRE." |
+| 20–25 s | click module → tactical panel; *Cut Ventilation −78%* | "The playbook tells you the physics before you commit — every number from the engine." |
+| 25–30 s | Presets → **Mir 1997**: vent cuts fail, cooling applied | "And when the fire carries its own oxidizer — Mir '97 — only the historically correct countermeasure works. Real incidents, playable." |
+
+## API quick reference
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | C++ engine handshake |
+| `POST /api/chamber/preview` | ignition pressure for the UI dial |
+| `POST /api/risk/rank` | rank active modules by 4-axis risk vector + dominant factor + PSI citation |
+| `POST /api/tactical/advise` | strict-JSON copilot: `diagnostico_fisico`, `acao_imediata_1/2`, `erro_a_evitar`, `citacao_nasa_id` |
+| `WS /ws/chamber` | 30 Hz telemetry incl. `o2Source` regime + risk vector |
+
+Smoke test: `PYTHONPATH=core/build:. pytest backend/tests/test_e2e_smoke.py`
