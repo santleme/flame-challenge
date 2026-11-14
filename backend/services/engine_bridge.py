@@ -29,6 +29,11 @@ def investigation_map() -> dict:
     return _cal.get("investigations", {})
 
 
+def ignition_pressure(material_id: str, o2_pct: float) -> float:
+    """Direct C++ MaterialRisk::ignitionPressure — pure, no chamber state."""
+    return max(0.0, _risks.ignition_pressure(material_id, float(o2_pct)))
+
+
 def preview(investigation_id: str, o2_pct: float, flow_cms: float | None = None) -> dict:
     """Physics-computed ignition pressure + model metadata for the UI dial."""
     spec = _cal["investigations"].get(investigation_id, {})

@@ -92,10 +92,10 @@ export default function TopBar({
         className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
           physics ? 'bg-emerald-500/15 text-emerald-400' : 'bg-edge/60 text-mist'
         }`}
-        title={physics ? 'C++ physics core online' : 'backend offline — local model'}
+        title={physics ? 'Engine: C++20 physics core online' : 'backend offline — local model'}
       >
         <Cpu className="h-3 w-3" />
-        {physics ? 'C++' : 'local'}
+        {physics ? 'Engine: C++20' : 'local'}
       </span>
 
       <button

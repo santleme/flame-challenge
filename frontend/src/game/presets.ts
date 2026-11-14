@@ -21,6 +21,13 @@ export interface PresetDef {
   citation: string
   /** xorshift offset — replays stay deterministic */
   seed: number
+  /** short label for the replay chip (defaults to name before the dash) */
+  chip?: string
+  /** dashboard environment to adopt on click — moves the decision bars */
+  env?: 'microgravity' | 'lunar' | 'martian' | 'historical' | 'earth'
+  /** cabin dials matching this incident's regime */
+  o2Pct?: number
+  flowCms?: number
 }
 
 export const PRESETS: PresetDef[] = [
@@ -30,6 +37,10 @@ export const PRESETS: PresetDef[] = [
     tagline: 'n-heptane droplet: post-extinction cool-flame stage (PSI-39)',
     citation: 'FLEX / FLEX-2 · NASA PSI-39',
     seed: 0xf1e2,
+    chip: 'FLEX',
+    env: 'microgravity',
+    o2Pct: 17,
+    flowCms: 0,
   },
   {
     id: 'saffire',
@@ -37,6 +48,10 @@ export const PRESETS: PresetDef[] = [
     tagline: 'SIBAL cloth burn riding the ventilation truss at forced-flow speed',
     citation: 'Saffire I–VI · NASA PSI',
     seed: 0x5aff,
+    chip: 'ISS µg',
+    env: 'microgravity',
+    o2Pct: 21.6,
+    flowCms: 20,
   },
   {
     id: 'mir',
@@ -44,6 +59,10 @@ export const PRESETS: PresetDef[] = [
     tagline: 'LiClO₄ Vika generator — self-oxidizing, cannot be vented out',
     citation: 'Mir-23/24 reports · Burrough, Dragonfly',
     seed: 0x1997,
+    chip: "Mir '97",
+    env: 'historical',
+    o2Pct: 21,
+    flowCms: 0,
   },
   {
     id: 'apollo-1',
@@ -51,6 +70,21 @@ export const PRESETS: PresetDef[] = [
     tagline: '16.7 psia pure-O₂ cabin: spark → flashover in seconds',
     citation: 'Apollo 204 Review Board, NASA 1967',
     seed: 0xa901,
+    chip: 'Apollo 1',
+    env: 'historical',
+    o2Pct: 40,
+    flowCms: 0,
+  },
+  {
+    id: 'lunar',
+    name: 'LUNAR ⅙g — FLARE Spread',
+    tagline: 'partial-gravity solid spread: slower than worst-case µg, still above Earth baseline',
+    citation: 'FLARE · NASA partial-gravity program',
+    seed: 0x16e0,
+    chip: 'Lunar ⅙g',
+    env: 'lunar',
+    o2Pct: 34,
+    flowCms: 10,
   },
 ]
 
@@ -69,6 +103,21 @@ const YARD: [RoomType, Rect, string][] = [
   ['quarters', { x: 7, y: 6, w: 4, h: 3 }, 'Crew Quarters'],
   ['fab', { x: 12, y: 6, w: 4, h: 3 }, 'Fabrication Bay'],
 ]
+
+/**
+ * Lay down the replay yard — modules come online immediately (replays
+ * skip construction).
+ */
+export function buildYard(hooks: PresetHooks): Room[] {
+  const rooms: Room[] = []
+  for (const [t, rect, label] of YARD) {
+    const room = hooks.addRoom(t, rect, label)
+    room.state = 'active'
+    room.buildProgress = 1
+    rooms.push(room)
+  }
+  return rooms
+}
 
 function seedFire(state: GameState, x: number, y: number, over: Partial<FireTile>) {
   const k = tileKey(x, y)
@@ -104,12 +153,7 @@ export function applyPreset(state: GameState, id: string, hooks: PresetHooks): b
   const def = PRESETS.find((p) => p.id === id)
   if (!def) return false
 
-  for (const [t, rect, label] of YARD) {
-    const room = hooks.addRoom(t, rect, label)
-    // replays skip construction — modules come online immediately
-    room.state = 'active'
-    room.buildProgress = 1
-  }
+  buildYard(hooks)
   for (let i = 0; i < 3; i++) {
     hooks.spawnCrew('engineer')
     hooks.spawnCrew('scientist')
@@ -197,6 +241,29 @@ export function applyPreset(state: GameState, id: string, hooks: PresetHooks): b
       hooks.log(
         'info',
         'Apollo 204: atmosphere control IS the fire policy — materials marginal at 21% O₂ flash over in pure O₂.',
+        def.citation,
+      )
+      break
+    }
+    case 'lunar': {
+      // FLARE: partial-g spread sits between the µg worst case and the
+      // Earth extinction regime — slower than SAFFIRE duct flow, still
+      // a sustained propagating front on the rack
+      for (const [x, y] of [[9, 3], [10, 3], [9, 4]] as [number, number][])
+        seedFire(state, x, y, {
+          intensity: 0.4,
+          spreadRate: 0.55,
+          smolder: true,
+          sourceInv: 'FLARE · Lunar ⅙g partial gravity',
+        })
+      hooks.log(
+        'warn',
+        'Sustained partial-gravity spread on Combustion Rack C-1 — ⅙g buoyancy keeps a weaker flammable layer alive.',
+        def.citation,
+      )
+      hooks.log(
+        'info',
+        'FLARE flies ISS materials to Lunar/Martian gravity: spread rates land between µg and 1-g extinction regimes.',
         def.citation,
       )
       break
