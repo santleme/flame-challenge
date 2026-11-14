@@ -1,17 +1,59 @@
 import { BALANCE, GRID_H, GRID_W } from './config'
 import type { GameState, Room, FireTile } from './types'
-import { rectContains, tileKey } from './types'
+import { tileKey } from './types'
 import { citation, rollsSmolder, spreadSpeed } from './experiments'
 import { techMult } from './tech'
 import type { Investigation } from '../types'
 
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
+
 export function roomAt(state: GameState, x: number, y: number): Room | null {
-  for (const r of state.rooms) if (rectContains(r.rect, x, y)) return r
-  return null
+  if (x < 0 || y < 0 || x >= GRID_W || y >= GRID_H) return null
+  return state.roomByTile[(y | 0) * GRID_W + (x | 0)]
 }
 
 export function isWalkable(state: GameState, x: number, y: number): boolean {
   return roomAt(state, x, y) !== null
+}
+
+/**
+ * Multi-source BFS distance (in tiles) from every visible, non-dormant
+ * fire — used by crew muster and panic checks. -1 = unreachable from any
+ * fire (sealed pocket or no fires). Cached per fire signature on the
+ * state so a wave of panicking crew shares one computation.
+ */
+export function fireDistance(state: GameState): Int16Array {
+  let sig = ''
+  for (const [k, f] of state.fires)
+    sig += `${k}:${f.hidden ? 1 : 0}${f.dormant > 0 ? 1 : 0};`
+  if (state.fireDist?.sig === sig) return state.fireDist.dist
+
+  const dist = new Int16Array(GRID_W * GRID_H).fill(-1)
+  const queue: number[] = []
+  for (const f of state.fires.values()) {
+    if (f.hidden || f.dormant > 0) continue
+    const i = f.y * GRID_W + f.x
+    if (dist[i] < 0) {
+      dist[i] = 0
+      queue.push(i)
+    }
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const i = queue[head]
+    const x = i % GRID_W
+    const y = (i / GRID_W) | 0
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue
+      const ni = ny * GRID_W + nx
+      if (dist[ni] >= 0 || !isWalkable(state, nx, ny)) continue
+      dist[ni] = dist[i] + 1
+      queue.push(ni)
+    }
+  }
+  state.fireDist = { sig, dist }
+  return dist
 }
 
 /** Seed a fire from a failed experiment. Anchored to the source record. */
@@ -120,8 +162,7 @@ export function updateFires(
 
     // spread: pressure ∝ intensity × real spread rate
     if (f.intensity > 0.4 && rng() < dt * f.spreadRate * f.intensity * 0.9) {
-      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
-      const [dx, dy] = dirs[(rng() * 4) | 0]
+      const [dx, dy] = DIRS[(rng() * 4) | 0]
       const nx = f.x + dx
       const ny = f.y + dy
       if (nx >= 0 && ny >= 0 && nx < GRID_W && ny < GRID_H && isWalkable(state, nx, ny) && !state.fires.has(tileKey(nx, ny))) {

@@ -13,7 +13,7 @@ import RiskBoard from './ui/RiskBoard'
 import SimulateBar from './ui/SimulateBar'
 import TopBar from './ui/TopBar'
 import WorldView, { type Selection } from './renderer/WorldView'
-import { engine, useGameVersion } from './state/store'
+import { engine, useGameSelector } from './state/store'
 import { injectTarget } from './game/masterSheet'
 import type { RoomType } from './game/types'
 import type { DashConditions, MasterRow } from './types'
@@ -32,7 +32,8 @@ export default function App() {
     flowCms: 0,
     tag: null,
   })
-  useGameVersion()
+  // no useGameVersion here — subscribing at the root re-rendered the whole
+  // tree every emit (~10 Hz); panels subscribe individually instead
 
   const patchCond = useCallback(
     (p: Partial<DashConditions>) => setCond((c) => ({ ...c, ...p })),
@@ -112,11 +113,7 @@ export default function App() {
           <PlaybookPanel engine={engine} onOpenMission={() => setMissionOpen(true)} />
           <EventFeed engine={engine} />
         </div>
-        {engine.state.notice && (
-          <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 rounded border border-ember/40 bg-panel/95 px-3 py-1.5 text-[12px] text-ember">
-            {engine.state.notice}
-          </div>
-        )}
+        <NoticeBanner />
         {expRoom !== null && (
           <ExperimentModal engine={engine} roomId={expRoom} onClose={() => setExpRoom(null)} />
         )}
@@ -128,6 +125,17 @@ export default function App() {
         {!started && <IntroOverlay onStart={() => setStarted(true)} />}
         <GameOverOverlay engine={engine} />
       </div>
+    </div>
+  )
+}
+
+/** transient engine notice — subscribes itself so App needn't re-render */
+function NoticeBanner() {
+  const notice = useGameSelector((s) => s.notice)
+  if (!notice) return null
+  return (
+    <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 rounded border border-ember/40 bg-panel/95 px-3 py-1.5 text-[12px] text-ember">
+      {notice}
     </div>
   )
 }

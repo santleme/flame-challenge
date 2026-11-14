@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, EyeOff, Flame, Gauge, RotateCcw, Wind } from 'lucide-react'
 import type { Engine } from '../game/engine'
 import { riskIndexLocal, riskMaterials } from '../sim-bridge/risk'
+import { roomAt } from '../game/fire'
 import { useGameVersion } from '../state/store'
 import type { DashConditions, EnvKey } from '../types'
 
@@ -42,18 +43,26 @@ export default function RiskBoard({ engine, cond, onCond }: Props) {
     .map((m) => ({ m, r: riskIndexLocal(m.id, cond.o2Pct, cond.flowCms, gravity) }))
     .sort((a, b) => b.r.riskIndex - a.r.riskIndex)
 
-  // module watchlist: burning first, then running experiments by riskPct
+  // module watchlist: bucket fires by room in one pass (was rooms × fires)
+  const fireFlag = new Map<number, { burning: boolean; smoldering: boolean }>()
+  for (const f of st.fires.values()) {
+    const room = roomAt(st, f.x, f.y)
+    if (!room) continue
+    const fl = fireFlag.get(room.id) ?? { burning: false, smoldering: false }
+    if (f.dormant <= 0 && !f.hidden) fl.burning = true
+    else fl.smoldering = true
+    fireFlag.set(room.id, fl)
+  }
   const watch = st.rooms
     .map((room) => {
-      const fires = [...st.fires.values()].filter(
-        (f) =>
-          f.x >= room.rect.x && f.x < room.rect.x + room.rect.w &&
-          f.y >= room.rect.y && f.y < room.rect.y + room.rect.h,
-      )
-      const burning = fires.some((f) => f.dormant <= 0 && !f.hidden)
-      const smoldering = fires.some((f) => f.dormant > 0 || f.hidden)
+      const fl = fireFlag.get(room.id)
       const exp = room.experiment
-      return { room, burning, smoldering, risk: exp?.state === 'running' ? exp.riskPct : 0 }
+      return {
+        room,
+        burning: fl?.burning ?? false,
+        smoldering: fl?.smoldering ?? false,
+        risk: exp?.state === 'running' ? exp.riskPct : 0,
+      }
     })
     .filter((w) => w.burning || w.smoldering || w.risk > 0)
     .sort((a, b) => Number(b.burning) - Number(a.burning) || b.risk - a.risk)

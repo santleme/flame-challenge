@@ -3,8 +3,8 @@ import type { Application } from 'pixi.js'
 import { BALANCE, GRID_H, GRID_W, ROOM_SPECS, TILE_H, mulberry32 } from '../game/config'
 import type { Engine } from '../game/engine'
 import { isoToScreen } from '../game/iso'
+import { roomAt } from '../game/fire'
 import type { Rect, Room, Vec } from '../game/types'
-import { rectContains } from '../game/types'
 import { makeTextures } from './textures'
 
 export interface WorldUI {
@@ -214,7 +214,7 @@ export function createWorld(app: Application, engine: Engine, ui: WorldUI): Worl
         const fl = floorSprites.get(k)
         if (fl) {
           const [fx2, fy2] = k.split(',').map(Number)
-          const room = st.rooms.find((r) => rectContains(r.rect, fx2, fy2))
+          const room = roomAt(st, fx2, fy2)
           if (room) fl.tint = roomTint(room)
         }
       }
@@ -270,25 +270,28 @@ export function createWorld(app: Application, engine: Engine, ui: WorldUI): Worl
     }
     // contagion warning: rooms adjacent to a burning room pulse amber
     if (st.fires.size) {
-      const burning = new Set<number>()
+      const burning = new Set<Room>()
       for (const f of st.fires.values()) {
         if (f.dormant > 0) continue
-        const r = st.rooms.find((rm) => rectContains(rm.rect, f.x, f.y))
-        if (r) burning.add(r.id)
+        const r = roomAt(st, f.x, f.y)
+        if (r) burning.add(r)
       }
       if (burning.size) {
         const pulse = 0.4 + 0.35 * Math.sin(t * 5)
         for (const room of st.rooms) {
-          if (burning.has(room.id)) continue
-          const near = [...burning].some((id) => {
-            const b = st.rooms.find((rm) => rm.id === id)!
-            return (
+          if (burning.has(room)) continue
+          let near = false
+          for (const b of burning) {
+            if (
               room.rect.x < b.rect.x + b.rect.w + 1 &&
               room.rect.x + room.rect.w > b.rect.x - 1 &&
               room.rect.y < b.rect.y + b.rect.h + 1 &&
               room.rect.y + room.rect.h > b.rect.y - 1
-            )
-          })
+            ) {
+              near = true
+              break
+            }
+          }
           if (!near) continue
           const top = isoToScreen(room.rect.x, room.rect.y)
           const right = isoToScreen(room.rect.x + room.rect.w - 1, room.rect.y)

@@ -158,8 +158,12 @@ export interface GameState {
   shipProgress: number
   scienceSinceGrant: number
   rooms: Room[]
+  /** O(1) tile→room lookup, indexed y*GRID_W+x — maintained by addRoomRaw */
+  roomByTile: (Room | null)[]
   crew: CrewMember[]
   fires: Map<string, FireTile>
+  /** cached BFS distance-from-visible-fire field (see fire.ts fireDistance) */
+  fireDist: { sig: string; dist: Int16Array } | null
   events: GameEvent[]
   speed: Speed
   /** purchased NASA spin-off tech ids (tech_spinoffs.json) */

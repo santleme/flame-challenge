@@ -1,6 +1,6 @@
 import { AlertTriangle, Flame, Info, ScrollText, Sparkles } from 'lucide-react'
 import type { Engine } from '../game/engine'
-import { useGameVersion } from '../state/store'
+import { useGameSelector } from '../state/store'
 import type { EventKind } from '../game/types'
 
 const STYLE: Record<EventKind, { icon: typeof Info; cls: string }> = {
@@ -18,7 +18,8 @@ function fmtT(t: number) {
 }
 
 export default function EventFeed({ engine }: { engine: Engine }) {
-  useGameVersion()
+  // re-render only when a new event lands (top id changes), not every tick
+  useGameSelector((s) => s.events[0]?.id ?? 0)
   return (
     <div className="pointer-events-auto flex max-h-56 w-80 flex-col rounded border border-edge bg-panel/85 backdrop-blur">
       <div className="flex items-center gap-1.5 border-b border-edge px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-mist">

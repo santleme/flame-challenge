@@ -8,6 +8,7 @@
 
 import { Engine, investigations } from './src/game/engine'
 import { moveAlongPath, updateCrewMember } from './src/game/crew'
+import { findPath } from './src/game/pathfind'
 import { mulberry32 } from './src/game/config'
 import { tileKey } from './src/game/types'
 import type { CrewMember, RoomType } from './src/game/types'
@@ -148,6 +149,77 @@ exp.scientistId = 424242
 eng.step(0.3)
 check(exp.scientistId !== 424242,
   'assignJobs: reservation held by a non-existent scientist is swept')
+
+// ---------- findPath: shortest-route correctness vs BFS ----------
+// Regression: a heap whose comparator reads a mutable f[] corrupts its
+// own ordering on every decrease-key and can return non-shortest paths.
+
+const bfsDist = (
+  from: { x: number; y: number },
+  walk: (x: number, y: number) => boolean,
+  w: number,
+  h: number,
+): Int16Array => {
+  const dist = new Int16Array(w * h).fill(-1)
+  const sx = Math.floor(from.x)
+  const sy = Math.floor(from.y)
+  const q = [sy * w + sx]
+  dist[q[0]] = 0
+  for (let hd = 0; hd < q.length; hd++) {
+    const i = q[hd]
+    const x = i % w
+    const y = (i / w) | 0
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const ni = ny * w + nx
+      if (dist[ni] >= 0 || !walk(nx, ny)) continue
+      dist[ni] = dist[i] + 1
+      q.push(ni)
+    }
+  }
+  return dist
+}
+
+{
+  // exact grid from the Devin Review report: buggy heap returned 26
+  const W2 = 15
+  const H2 = 15
+  const blocked = new Set(
+    [[3, 9], [4, 9], [5, 9], [2, 10], [6, 10], [7, 10], [8, 11], [9, 12],
+     [2, 13], [3, 13], [8, 13], [9, 14]].map(([x, y]) => `${x},${y}`),
+  )
+  const walk = (x: number, y: number) => !blocked.has(`${x},${y}`)
+  const from = { x: 3.5, y: 14.5 }
+  const to = { x: 14.5, y: 11.5 }
+  const want = bfsDist(from, walk, W2, H2)[11 * W2 + 14]
+  const path = findPath(from, to, walk, W2, H2)
+  check(path !== null && path.length === want,
+    `findPath: shortest route on review grid (got ${path?.length}, want ${want})`)
+}
+
+{
+  // seeded random obstacle grids — findPath must match BFS or agree on
+  // unreachability, on every one
+  const rng = mulberry32(99)
+  let bad = 0
+  for (let iter = 0; iter < 40; iter++) {
+    const w = 8 + ((rng() * 20) | 0)
+    const h = 8 + ((rng() * 20) | 0)
+    const blocked = new Set<string>()
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) if (rng() < 0.18) blocked.add(`${x},${y}`)
+    const walk = (x: number, y: number) => !blocked.has(`${x},${y}`)
+    const from = { x: ((rng() * w) | 0) + 0.5, y: ((rng() * h) | 0) + 0.5 }
+    const to = { x: ((rng() * w) | 0) + 0.5, y: ((rng() * h) | 0) + 0.5 }
+    const dist = bfsDist(from, walk, w, h)
+    const want = dist[Math.floor(to.y) * w + Math.floor(to.x)]
+    const path = findPath(from, to, walk, w, h)
+    if (want < 0 ? path !== null : path === null || path.length !== want) bad++
+  }
+  check(bad === 0, `findPath: matches BFS on 40 seeded obstacle grids (${bad} mismatches)`)
+}
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures ? 1 : 0)

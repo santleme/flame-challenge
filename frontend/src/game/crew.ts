@@ -1,6 +1,6 @@
 import { BALANCE, GRID_H, GRID_W } from './config'
 import { findPath } from './pathfind'
-import { extinguishAt, fireNear, isWalkable } from './fire'
+import { extinguishAt, fireDistance, fireNear, isWalkable } from './fire'
 import { techMult } from './tech'
 import type { CrewMember, GameState, Room, Vec } from './types'
 import { rectContains, tileKey } from './types'
@@ -48,20 +48,23 @@ export function releaseExperiment(state: GameState, c: CrewMember) {
     if (r.experiment?.scientistId === c.id) r.experiment.scientistId = null
 }
 
-/** pick the walkable tile furthest from all visible fires — a muster point */
+/**
+ * Pick the walkable tile furthest from all visible fires — a muster
+ * point. Distance is the BFS path distance (fire.ts fireDistance), so a
+ * sealed pocket the fire cannot reach (-1) outranks any burning-side
+ * tile; the field is shared by every panicking member in a tick.
+ */
 export function musterPoint(state: GameState): Vec {
+  const dist = fireDistance(state)
   let best: Vec = { x: 1.5, y: 1.5 }
-  let bestScore = -1
+  let bestScore = -2
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
       if (!isWalkable(state, x, y)) continue
-      let dmin = 999
-      for (const f of state.fires.values()) {
-        if (f.hidden || f.dormant > 0) continue
-        dmin = Math.min(dmin, Math.abs(f.x - x) + Math.abs(f.y - y))
-      }
-      if (dmin > bestScore) {
-        bestScore = dmin
+      const d = dist[y * GRID_W + x]
+      const score = d < 0 ? Number.MAX_SAFE_INTEGER : d
+      if (score > bestScore) {
+        bestScore = score
         best = { x: x + 0.5, y: y + 0.5 }
       }
     }
