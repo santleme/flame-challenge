@@ -163,11 +163,11 @@ export function buildInsights(
     title: ignitable.length
       ? `${ignitable.length}/${withMat.length} mapped materials ignitable at ${cond.o2Pct}% O₂`
       : `No mapped material ignitable at ${cond.o2Pct}% O₂`,
-    body: ignitable.length
+    body: bindingLoc != null
       ? 'Materials whose limiting-oxygen index sits below cabin O₂ retain non-zero ignition ' +
         `pressure. The binding limit is the lowest LOC in that set (${bindingLoc}%) — ` +
         `but the model keeps a 4% residual within 3pt below it, so true suppression means ` +
-        `O₂ below ~${Math.round((bindingLoc as number) - 3)}%; NASA exploration targets ` +
+        `O₂ below ~${Math.round(bindingLoc - 3)}%; NASA exploration targets ` +
         '~16.5–18% for that reason.'
       : 'Every mapped material LOC sits above the cabin setting — ignition pressure is at ' +
         'its residual floor across the matrix.',

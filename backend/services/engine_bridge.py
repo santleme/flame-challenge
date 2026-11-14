@@ -105,8 +105,11 @@ def make_chamber(
     cfg.o2Pct = float(o2_pct)
     fr = spec.get("flowRangeCms") or [0, 10]
     if len(fr) < 2:
-        fr = list(fr) + [0] * (2 - len(fr))
-    cfg.flowCms = float(flow_cms if flow_cms is not None else fr[1] * 0.5)
+        # pad a partial range by repeating the known bound — padding with
+        # zero would silently make the default flow 0 or negative-sorted
+        fr = [fr[0], fr[0]] if fr else [0, 0]
+    cfg.flowCms = float(flow_cms if flow_cms is not None
+                        else (fr[0] + fr[1]) / 2)
     cfg.pressureKpa = float(pressure_kpa if pressure_kpa is not None
                             else spec.get("pressureKpa", 101))
     cfg.partialGravity = bool(spec.get("partialGravity", False))

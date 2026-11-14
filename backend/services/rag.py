@@ -58,12 +58,16 @@ TOPIC_DEFAULTS = {
 }
 
 # fuel grounding — keep in sync with FUEL_ID in normalize_experiments.py;
-# "methane" must precede "ethane" or "methane" mis-extracts as "ethane"
+# "methane" must precede "ethane" or "methane" mis-extracts as "ethane".
+# Word-bounded: bare "jet"/"paper" must not match inside "jettison"/
+# "newspaper"; "heptane?" deliberately also covers the truncated "heptan"
+# spelling some data sheets use (FUEL_ID maps it too).
 FUEL_RE = re.compile(
-    r"heptane?|methanol|meoh|ethanol|butanol|iso.?octane|decanol|decane|"
-    r"nonane|ethylene|c2h4|methane|ch4|ethane|c2h6|propane|c3h8|butane|"
-    r"c4h10|jp.?8|jet|pmma|acrylic|cotton|sibal|nomex|polycarbonate|"
-    r"teflon|kapton|pyrell|silicone|cellulose|paper|cardboard",
+    r"\b(?:heptane?|methanol|meoh|ethanol|butanol|iso.?octane|decanol|"
+    r"decane|nonane|ethylene|c2h4|methane|ch4|ethane|c2h6|propane|c3h8|"
+    r"butane|c4h10|jp.?8|jet|pmma|acrylic|cotton|sibal|nomex|"
+    r"polycarbonate|teflon|kapton|pyrell|silicone|cellulose|paper|"
+    r"cardboard)\b",
     re.IGNORECASE)
 
 _docs: list[dict] = []

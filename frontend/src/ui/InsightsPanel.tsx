@@ -21,7 +21,7 @@ import {
 import { getInvestigations } from '../lib/data'
 import { buildInsights, rankInvestigations } from '../lib/insights'
 import { INV_MATERIAL, injectTarget, MASTER_ROWS } from '../game/masterSheet'
-import { limitingO2 } from '../game/experiments'
+import { limitingO2, o2Range } from '../game/experiments'
 import { riskCurveLocal, riskIndexLocal } from '../sim-bridge/risk'
 import type { DashConditions, EnvKey, Investigation, MasterRow, Severity } from '../types'
 
@@ -230,11 +230,14 @@ function Detail({
         <Stat
           label="O₂ envelope"
           value={
-            inv.conditions.oxygenPct
-              ? `${inv.conditions.oxygenPct[0]}–${inv.conditions.oxygenPct[1]}%`
+            inv.psiO2RangePct || inv.conditions.oxygenPct
+              ? `${o2Range(inv)[0]}–${o2Range(inv)[1]}%`
               : '—'
           }
-          sub={inv.metrics.coolFlameObserved ? 'cool flame observed' : 'hot-flame regime'}
+          sub={
+            (inv.psiO2RangePct ? 'parsed PSI runs' : 'curated range') +
+            (inv.metrics.coolFlameObserved ? ' · cool flame observed' : ' · hot-flame regime')
+          }
         />
       </div>
 

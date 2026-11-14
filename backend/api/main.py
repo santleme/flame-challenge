@@ -15,7 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.services import engine_bridge as eb
 from backend.services import neighbors, rag, risk, tactics
@@ -203,7 +203,25 @@ async def chamber_ws(ws: WebSocket) -> None:
     """Stream a live chamber run at ~30 Hz until the run finishes or 60 s cap."""
     await ws.accept()
     try:
-        req = ChamberReq(**json.loads(await ws.receive_text()))
+        raw = await ws.receive_text()
+        try:
+            req = ChamberReq(**json.loads(raw))
+        except ValidationError as exc:
+            # same sanitized shape as the HTTP 422 handler — never the
+            # raw str(exc), which echoes the offending payload back
+            try:
+                detail = jsonable_encoder(
+                    {"detail": _json_safe(exc.errors()),
+                     "body": _json_safe(raw)})
+            except Exception:
+                detail = {"detail": "Invalid request body",
+                          "type": "request_validation"}
+            await ws.send_text(json.dumps({"error": detail}))
+            return
+        except (json.JSONDecodeError, TypeError):
+            await ws.send_text(
+                json.dumps({"error": "expected a JSON object request"}))
+            return
         ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms,
                              req.seed, req.pressureKpa)
         dt = 1.0 / 30.0

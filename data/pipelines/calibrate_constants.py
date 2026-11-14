@@ -141,8 +141,12 @@ def main() -> int:
         inv_map[inv["id"]] = {
             "model": CATEGORY_MODEL.get(inv["category"], "spread"),
             "materialId": primary,
-            "o2Range": c.get("oxygenPct") or [18, 24],
-            "flowRangeCms": c.get("flowCms") or [0, 10],
+            # parsed PSI envelopes beat curated conditions — same
+            # precedence the TS mirror applies in game/experiments.ts
+            "o2Range": inv.get("psiO2RangePct") or c.get("oxygenPct")
+            or [18, 24],
+            "flowRangeCms": inv.get("psiFlowRangeCms") or c.get("flowCms")
+            or [0, 10],
             "pressureKpa": c.get("pressureKpa") or 101,
             "partialGravity": inv["gravity"] == "partial-gravity",
             "loc": loc,

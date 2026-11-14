@@ -244,7 +244,11 @@
       "psiExtinctionLimitPct": {
         "min": 12.0,
         "max": 34.0
-      }
+      },
+      "psiFlowRangeCms": [
+        0.0,
+        2.55
+      ]
     },
     {
       "id": "acme",
@@ -454,6 +458,10 @@
       "psiO2RangePct": [
         21.5,
         22.1
+      ],
+      "psiFlowRangeCms": [
+        20.0,
+        30.0
       ]
     },
     {

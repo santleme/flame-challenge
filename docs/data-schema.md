@@ -54,7 +54,8 @@ test files were parsed. `build_dataset.py` deep-merges them (nested
 | `psiRuns` | number | parsed test runs for this investigation |
 | `psiAccessions` | string[] | PSI accession ids the runs came from |
 | `psiFuels` | string[] | fuels observed in the parsed files |
-| `psiO2RangePct` | `[min,max]` | O₂ envelope across parsed runs |
+| `psiO2RangePct` | `[min,max]` | O₂ envelope across parsed runs — drives the experiment dial bounds |
+| `psiFlowRangeCms` | `[min,max]` | forced-flow envelope across parsed runs (emitted only when runs record `flow_cms`) |
 | `psiExtinctionLimitPct` | `{min,max}` | measured extinction envelope (not LOC) |
 | `metrics.coolFlameObserved` | boolean | set only when ≥5% of runs show cool flames |
 

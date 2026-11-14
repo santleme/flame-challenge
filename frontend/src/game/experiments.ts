@@ -19,14 +19,15 @@ const PROFILES = profiles as {
   }
 }
 
-/** tested O₂ range an experiment can be dialed into */
+/** tested O₂ range an experiment can be dialed into — the parsed PSI
+ *  envelope wins over the curated conditions when runs were ingested */
 export function o2Range(inv: Investigation): [number, number] {
-  return inv.conditions.oxygenPct ?? [18, 24]
+  return inv.psiO2RangePct ?? inv.conditions.oxygenPct ?? [18, 24]
 }
 
 /** tested forced-flow range, cm/s (SAFFIRE ventilation vector) */
 export function flowRange(inv: Investigation): [number, number] {
-  return inv.conditions.flowCms ?? [0, 10]
+  return inv.psiFlowRangeCms ?? inv.conditions.flowCms ?? [0, 10]
 }
 
 export function limitingO2(inv: Investigation): number {

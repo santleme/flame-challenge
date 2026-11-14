@@ -86,7 +86,10 @@ FUEL_ID = {
     "iso-octane": "iso-octane", "isooctane": "iso-octane",
     "iso octane": "iso-octane", "decane": "decanol", "decanol": "decanol",
     "n-decane": "decanol", "nonane": "decanol",
-    "ethanol": "methanol", "butanol": "decanol",
+    # ethanol/butanol map to THEMSELVES — PSI-68 runs "Ethanol (pure)"
+    # tests; aliasing them to methanol/decanol was a chemistry error that
+    # also corrupted the per-material fit statistics
+    "ethanol": "ethanol", "butanol": "butanol",
     "ethylene": "ethylene", "c2h4": "ethylene",
     "methane": "methane", "ch4": "methane",
     "propane": "propane", "c3h8": "propane",
@@ -478,9 +481,11 @@ def _flag(text: str | None) -> bool | None:
     v = (text or "").strip().lower()
     if not v or v in ("n/a", "na", "none", "-", "?", "unknown"):
         return None
-    if re.match(r"yes|true|y\b|1\b", v):
+    # every alternative needs its own \b — "yes" unanchored also matched
+    # "yesterday…", "fail" matched "failure reported" (a comment, not a no)
+    if re.match(r"^(yes|true|y|1)\b", v):
         return True
-    if re.match(r"no\b|false|n\b|0\b|fail", v):
+    if re.match(r"^(no|false|n|0|fail)\b", v):
         return False
     return None
 
@@ -878,6 +883,11 @@ def write_structured(rows: list[dict]) -> None:
     records = []
     for inv, rs in sorted(by_inv.items()):
         o2s = [float(r["o2_pct"]) for r in rs if r.get("o2_pct")]
+        # flow_cms = None means quiescent (drift only), not "unrecorded" —
+        # a rig that mostly ran quiescent but pushed a few 2.55 cm/s
+        # points has a [0, 2.55] envelope, not a degenerate single point
+        flows = ([float(r["flow_cms"] or 0.0) for r in rs]
+                 if any(r.get("flow_cms") for r in rs) else [])
         exts = [float(r["o2_pct"]) for r in rs
                 if r.get("o2_pct") and r.get("outcome") == "extinction"]
         n_cool = sum(str(r.get("cool_flame")).lower() == "true" for r in rs)
@@ -894,6 +904,8 @@ def write_structured(rows: list[dict]) -> None:
         }
         if o2s:
             rec["psiO2RangePct"] = [min(o2s), max(o2s)]
+        if flows:
+            rec["psiFlowRangeCms"] = [min(flows), max(flows)]
         if exts:
             rec["psiExtinctionLimitPct"] = {"min": min(exts), "max": max(exts)}
         # flag the investigation only when cool flames are a real signature

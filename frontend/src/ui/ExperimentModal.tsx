@@ -45,6 +45,7 @@ export default function ExperimentModal({ engine, roomId, onClose }: Props) {
     { invId: string; o2: number; flow: number; pressure: number } | undefined
   >(undefined)
   const loc = limitingO2(inv)
+  const contrast = gravityContrast(inv)
 
   // live risk from the C++ core when the backend is up (local model otherwise)
   // — debounced so slider drags don't queue a request per step
@@ -163,7 +164,7 @@ export default function ExperimentModal({ engine, roomId, onClose }: Props) {
             </div>
 
             <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <Metric label="limiting O₂" value={inv.metrics.limitingOxygenPct != null ? `${inv.metrics.limitingOxygenPct}%` : '—'} />
+              <Metric label="limiting O₂" value={`${loc}%`} />
               <Metric
                 label="flame spread"
                 value={
@@ -199,6 +200,13 @@ export default function ExperimentModal({ engine, roomId, onClose }: Props) {
                 Pushing O₂ above the limiting concentration yields richer data — and a sharply
                 higher ignition probability. In microgravity, flames can persist below Earth LOC.
               </p>
+              {inv.psiExtinctionLimitPct && (
+                <p className="mt-1 text-[9px] leading-snug text-mist/80">
+                  Measured extinction envelope: {inv.psiExtinctionLimitPct.min}–
+                  {inv.psiExtinctionLimitPct.max}% O₂ across parsed runs — includes
+                  radiative/cool-flame regimes, so it is not a flammability-limit bound.
+                </p>
+              )}
             </div>
 
             {/* forced-flow dial — SAFFIRE ventilation vector */}
@@ -256,11 +264,11 @@ export default function ExperimentModal({ engine, roomId, onClose }: Props) {
               <div className="mt-1.5 space-y-1 text-[10px] leading-snug">
                 <div className="flex gap-2">
                   <span className="w-16 shrink-0 font-mono text-mist">Earth 1 g</span>
-                  <span className="text-white/80">{gravityContrast(inv).earth}</span>
+                  <span className="text-white/80">{contrast.earth}</span>
                 </div>
                 <div className="flex gap-2">
                   <span className="w-16 shrink-0 font-mono text-ice">Space µg</span>
-                  <span className="text-white/80">{gravityContrast(inv).space}</span>
+                  <span className="text-white/80">{contrast.space}</span>
                 </div>
               </div>
             </div>

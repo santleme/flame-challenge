@@ -122,7 +122,10 @@ std::string Chamber::stateJson() const {
             }
             if (n < 0) return std::string("{}");  // encoding failure — no hang
         }
-        return out;
+        // payload still does not fit at the cap — a buffer of truncated
+        // snprintf output + trailing NULs is not JSON; return a valid
+        // minimal object instead
+        return std::string("{\"error\":\"state too large\"}");
     };
     if (useDroplet_) {
         const auto& s = droplet_.state();

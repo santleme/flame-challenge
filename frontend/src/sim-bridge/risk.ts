@@ -47,13 +47,40 @@ interface ModelMaterial {
 
 const MATERIALS = (model as { materials?: Record<string, ModelMaterial> })
   .materials ?? {}
-const FLOW_ANCHORS: number[][] =
-  (model as { flowAnchors?: number[][] }).flowAnchors ?? [
-    [0, 0.8], [2, 0.9], [8, 1.05], [18, 1.15], [40, 1.0], [80, 0.7], [150, 0.45],
-  ]
-const FORMULA = (model as {
-  formula?: { ignitionBase: number; ignitionK: number; ignitionExp: number; residualBand: number }
-}).formula ?? { ignitionBase: 0.04, ignitionK: 0.055, ignitionExp: 1.35, residualBand: 3 }
+
+const DEFAULT_FLOW_ANCHORS: number[][] = [
+  [0, 0.8], [2, 0.9], [8, 1.05], [18, 1.15], [40, 1.0], [80, 0.7], [150, 0.45],
+]
+
+const finite = (v: unknown, d: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : d
+
+// a malformed/partial risk_model.json must degrade to the bundled
+// defaults, never crash — the dashboard evaluates this synchronously
+// per render and a throw white-screens the panel
+const FLOW_ANCHORS: number[][] = (() => {
+  const raw = (model as { flowAnchors?: unknown }).flowAnchors
+  const pairs = Array.isArray(raw)
+    ? raw
+        .filter(
+          (a): a is number[] =>
+            Array.isArray(a) &&
+            a.length >= 2 &&
+            Number.isFinite(a[0]) &&
+            Number.isFinite(a[1]),
+        )
+        .map((a) => [a[0], a[1]])
+    : []
+  return pairs.length ? pairs : DEFAULT_FLOW_ANCHORS
+})()
+
+const _f = (model as { formula?: Record<string, unknown> }).formula ?? {}
+const FORMULA = {
+  ignitionBase: finite(_f.ignitionBase, 0.04),
+  ignitionK: finite(_f.ignitionK, 0.055),
+  ignitionExp: finite(_f.ignitionExp, 1.35),
+  residualBand: finite(_f.residualBand, 3),
+}
 
 const GRAVITY_FACTOR: Record<string, number> = {
   microgravity: 1.0, lunar: 0.92, martian: 0.95,
@@ -114,19 +141,22 @@ export function riskIndexLocal(
     MATERIALS[MATERIAL_ALIAS[materialId] ?? ''] ??
     MATERIALS.pmma ??
     FALLBACK_MATERIAL
-  const margin = o2Pct - m.locPct
+  const o2 = finite(o2Pct, 21)
+  const flow = finite(flowCms, 0)
+  const loc = finite(m.locPct, FALLBACK_MATERIAL.locPct)
+  const margin = o2 - loc
   const p = ignitionPressure(margin)
-  const f = flowFactor(flowCms)
-  const h = m.hiddenFactor ?? 1
-  const g = GRAVITY_FACTOR[gravity.toLowerCase()] ?? 1.0
+  const f = flowFactor(flow)
+  const h = finite(m.hiddenFactor, 1)
+  const g = GRAVITY_FACTOR[String(gravity).toLowerCase()] ?? 1.0
   const risk = Math.max(0, Math.min(1, p * f * h * g))
   return {
-    materialId: m.id,
-    materialName: m.name,
-    o2Pct,
-    flowCms,
+    materialId: m.id ?? materialId,
+    materialName: m.name ?? m.id ?? materialId,
+    o2Pct: o2,
+    flowCms: flow,
     gravity,
-    locPct: m.locPct,
+    locPct: loc,
     locSource: m.locSource ?? 'calibration',
     margin: Math.round(margin * 100) / 100,
     riskIndex: round4(risk),

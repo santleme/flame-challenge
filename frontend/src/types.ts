@@ -55,6 +55,7 @@ export interface Investigation {
   psiAccessions?: string[]
   psiFuels?: string[]
   psiO2RangePct?: [number, number]
+  psiFlowRangeCms?: [number, number]
   psiExtinctionLimitPct?: { min: number; max: number }
 }
 
