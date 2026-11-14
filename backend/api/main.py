@@ -50,6 +50,8 @@ def _json_safe(value):
     a rejected `1e309`/`NaN` input would otherwise turn the 422 into a 500."""
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")[:2000]
     if isinstance(value, dict):
         return {k: _json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -60,10 +62,13 @@ def _json_safe(value):
 @app.exception_handler(RequestValidationError)
 async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
     # same shape as FastAPI's default 422 handler, but sanitized
-    return JSONResponse(
-        status_code=422,
-        content=jsonable_encoder({"detail": _json_safe(exc.errors()),
-                                  "body": _json_safe(exc.body)}))
+    try:
+        content = jsonable_encoder({"detail": _json_safe(exc.errors()),
+                                    "body": _json_safe(exc.body)})
+    except Exception:
+        content = {"detail": "Invalid request body",
+                   "type": "request_validation"}
+    return JSONResponse(status_code=422, content=content)
 
 
 class PreviewReq(BaseModel):
@@ -93,7 +98,8 @@ def get_materials() -> dict:
 
 @app.post("/api/chamber/preview")
 def chamber_preview(req: PreviewReq) -> dict:
-    return eb.preview(req.investigationId, req.o2Pct, req.flowCms)
+    return eb.preview(req.investigationId, req.o2Pct, req.flowCms,
+                      req.pressureKpa)
 
 
 # ---------- SI layer: retrieval, SQL-RAG, risk simulator ----------
@@ -141,9 +147,14 @@ def api_risk_get(materialId: str = "pmma",
 
 
 @app.get("/api/risk/curve")
-def api_risk_curve(materialId: str = "pmma", flowCms: float = 0.0,
+def api_risk_curve(materialId: str = "pmma",
+                   flowCms: float = Query(0.0, ge=0.0, le=300.0,
+                                          allow_inf_nan=False),
                    gravity: str = "microgravity",
-                   o2Min: float = 8.0, o2Max: float = 40.0) -> dict:
+                   o2Min: float = Query(8.0, ge=0.0, le=100.0,
+                                        allow_inf_nan=False),
+                   o2Max: float = Query(40.0, ge=0.0, le=100.0,
+                                        allow_inf_nan=False)) -> dict:
     return risk.curve(materialId, flowCms, gravity, o2Min, o2Max)
 
 
@@ -163,7 +174,8 @@ async def chamber_ws(ws: WebSocket) -> None:
         dt = 1.0 / 30.0
         deadline = time.monotonic() + 60
         while not ch.finished() and time.monotonic() < deadline:
-            ch.step(dt)
+            # the pure-Python fallback is CPU-bound — keep the event loop free
+            await asyncio.to_thread(ch.step, dt)
             events = ch.drain_events()
             payload = json.loads(ch.state_json())
             if events:

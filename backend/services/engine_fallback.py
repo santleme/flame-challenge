@@ -10,6 +10,7 @@ airflow_propagator,chamber}.cpp — keep them in sync.
 """
 from __future__ import annotations
 
+import copy
 import json
 import math
 from dataclasses import dataclass, replace
@@ -22,10 +23,6 @@ AMBIENT_K = 298.0
 DROPLET_IGNITION, DROPLET_HOT, DROPLET_COOL, DROPLET_EXTINCTION, DROPLET_OUT = range(5)
 # SolidSpread::Regime
 SPREAD_PREHEAT, SPREAD_SPREADING, SPREAD_COOLING, SPREAD_OUT = range(4)
-
-
-def _b(v: bool) -> str:
-    return "true" if v else "false"
 
 
 @dataclass
@@ -288,8 +285,12 @@ class _SolidSpread:
         return self.c_flow < 1.0 and self.c_o2 < self.c_mat.locPct + 3.0
 
     def _intensity(self, v: float) -> float:
-        denom = max(self.c_mat.spreadMaxCms, 1e-9)
-        return min(max(0.3 + v / denom, 0.0), 1.0)
+        # C++ divides by spreadMaxCms directly: a zero-cap material yields
+        # inf (→1.0) for v>0 and NaN for v=0. NaN cannot serialize to JSON,
+        # so the fallback maps the degenerate case to 0.0 for a dead front.
+        if self.c_mat.spreadMaxCms <= 0:
+            return 1.0 if v > 0 else 0.0
+        return min(max(0.3 + v / self.c_mat.spreadMaxCms, 0.0), 1.0)
 
     def step(self, dt: float) -> None:
         self.t_sec += dt
@@ -345,7 +346,9 @@ class Chamber:
                                   False, False)
 
     def __init__(self, risks: MaterialRisk | None = None) -> None:
-        self._risks = risks if risks is not None else MaterialRisk()
+        # C++ takes MaterialRisk by value — a later load_json on the shared
+        # object must not rewrite materials inside live chambers.
+        self._risks = copy.deepcopy(risks) if risks is not None else MaterialRisk()
         self._cfg = ChamberConfig()
         self._droplet = _DropletFlame()
         self._spread = _SolidSpread()
@@ -359,7 +362,9 @@ class Chamber:
         # caller's object, or update_atmosphere on one corrupts the other.
         self._cfg = replace(cfg)
         self._use_droplet = cfg.model == "droplet"
-        mat = self._risks.table.get(cfg.materialId) or self._FALLBACK_MATERIAL
+        # copy the Material too — sub-model configs are by value in C++
+        mat = replace(self._risks.table.get(cfg.materialId)
+                    or self._FALLBACK_MATERIAL)
         if self._use_droplet:
             self._droplet.configure(cfg.dropletD0Mm, cfg.o2Pct,
                                     cfg.pressureKpa, mat, cfg.seed)
@@ -429,23 +434,29 @@ class Chamber:
     def state_json(self) -> str:
         if self._use_droplet:
             s = self._droplet
-            return (
-                f'{{"model":"droplet","tSec":{s.t_sec:.3f},'
-                f'"regime":{s.regime},'
-                f'"dropletDMm":{s.droplet_d_mm:.3f},'
-                f'"flameRMm":{s.flame_r_mm:.3f},'
-                f'"flameTempK":{s.temp_k:.1f},'
-                f'"heatReleaseW":{s.heat_w:.2f},'
-                f'"burnFraction":{s.burn_fraction:.3f},'
-                f'"ignited":{_b(self._ignited)},'
-                f'"coolFlame":{_b(self.cool_flame())},'
-                f'"finished":{_b(self.finished())}}}')
+            return json.dumps({
+                "model": "droplet",
+                "tSec": round(s.t_sec, 3),
+                "regime": s.regime,
+                "dropletDMm": round(s.droplet_d_mm, 3),
+                "flameRMm": round(s.flame_r_mm, 3),
+                "flameTempK": round(s.temp_k, 1),
+                "heatReleaseW": round(s.heat_w, 2),
+                "burnFraction": round(s.burn_fraction, 3),
+                "ignited": self._ignited,
+                "coolFlame": self.cool_flame(),
+                "finished": self.finished(),
+            }, separators=(",", ":"))
         s = self._spread
-        return (
-            f'{{"model":"spread","tSec":{s.t_sec:.3f},"regime":{s.regime},'
-            f'"frontPosCm":{s.front_cm:.3f},'
-            f'"spreadRateCms":{s.rate_cms:.3f},'
-            f'"burnLengthCm":{s.burn_len_cm:.3f},'
-            f'"intensity":{s.intensity:.3f},'
-            f'"ignited":{_b(self._ignited)},"coolFlame":false,'
-            f'"finished":{_b(self.finished())}}}')
+        return json.dumps({
+            "model": "spread",
+            "tSec": round(s.t_sec, 3),
+            "regime": s.regime,
+            "frontPosCm": round(s.front_cm, 3),
+            "spreadRateCms": round(s.rate_cms, 3),
+            "burnLengthCm": round(s.burn_len_cm, 3),
+            "intensity": round(s.intensity, 3),
+            "ignited": self._ignited,
+            "coolFlame": False,
+            "finished": self.finished(),
+        }, separators=(",", ":"))

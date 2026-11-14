@@ -57,11 +57,15 @@ def _spec(investigation_id: str) -> dict:
     return spec
 
 
-def preview(investigation_id: str, o2_pct: float, flow_cms: float | None = None) -> dict:
+def preview(investigation_id: str, o2_pct: float,
+            flow_cms: float | None = None,
+            pressure_kpa: float | None = None) -> dict:
     """Physics-computed ignition pressure + model metadata for the UI dial."""
     spec = _spec(investigation_id)
     material_id = spec.get("materialId", "pmma")
     pressure = _risks.ignition_pressure(material_id, float(o2_pct))
+    effective_kpa = float(pressure_kpa if pressure_kpa is not None
+                          else spec.get("pressureKpa", 101))
     return {
         "investigationId": investigation_id,
         "o2Pct": o2_pct,
@@ -71,6 +75,7 @@ def preview(investigation_id: str, o2_pct: float, flow_cms: float | None = None)
         "loc": spec.get("loc"),
         "o2Range": spec.get("o2Range", [18, 24]),
         "flowRangeCms": spec.get("flowRangeCms", [0, 10]),
+        "pressureKpa": effective_kpa,
         "engine": ENGINE,
     }
 

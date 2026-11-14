@@ -31,6 +31,7 @@ def test_preview_reports_engine_and_spec():
     assert j["engine"] == eb.ENGINE
     assert j["materialId"] == "cotton"
     assert j["model"] == "spread"
+    assert j["pressureKpa"] == pytest.approx(70.0)
     assert 0.0 <= j["ignitionPressure"] <= 1.0
 
 
@@ -150,6 +151,20 @@ def test_fallback_chambers_do_not_share_caller_config():
     a.update_atmosphere(0.0, 0.0, 101.0)
     assert cfg.o2Pct == 21.0          # caller's object untouched
     assert b.ignition_pressure() == pytest.approx(before)
+
+
+def test_fallback_chambers_isolated_from_later_risk_table_mutation():
+    """Chamber must own its MaterialRisk/Material copy — C++ passes both
+    by value. Mutating the shared table must not rewrite live chambers."""
+    risks = fb.MaterialRisk()
+    cfg = fb.ChamberConfig(materialId="pmma", model="spread",
+                           o2Pct=21.0, flowCms=5.0)
+    a = fb.Chamber(risks)
+    a.configure(cfg)
+    before = a.ignition_pressure()
+    # simulate a calibration reload: locPct jump would flip the pressure
+    risks.table["pmma"].locPct = 30.0
+    assert a.ignition_pressure() == pytest.approx(before)
 
 
 def test_fallback_matches_cpp_engine_when_built():
