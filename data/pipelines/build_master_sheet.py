@@ -15,7 +15,7 @@ back to a NASA PSI record:
 
 Outputs:
   data/processed/nasa_combustion_master.csv   (auditable table)
-  frontend/src/data/master_sheet.json         (same rows for the UI)
+  data/bundle/master_sheet.json               (same rows, JSON form)
 
 Usage: python data/pipelines/build_master_sheet.py [--runs-per-material N]
 """
@@ -30,10 +30,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SHARED = ROOT / "shared" / "calibrated-data"
 PROCESSED = ROOT / "data" / "processed"
-FRONTEND_DATA = ROOT / "frontend" / "src" / "data"
+BUNDLE = ROOT / "data" / "bundle"
 
 OUT_CSV = PROCESSED / "nasa_combustion_master.csv"
-OUT_JSON = FRONTEND_DATA / "master_sheet.json"
+OUT_JSON = BUNDLE / "master_sheet.json"
 
 COLUMNS = [
     "record_type", "id", "name", "investigation_id", "material_id",
@@ -63,7 +63,7 @@ def load_inputs() -> dict:
         return json.loads(path.read_text())
 
     return {
-        "dataset": j(FRONTEND_DATA / "investigations.json"),
+        "dataset": j(BUNDLE / "investigations.json"),
         "calib": j(SHARED / "calibration.json"),
         "risk": j(SHARED / "risk_model.json"),
         "psi": j(SHARED / "psi_experiments.json"),
@@ -231,6 +231,7 @@ def main() -> int:
         w.writeheader()
         w.writerows(rows)
 
+    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(
         json.dumps(
             {

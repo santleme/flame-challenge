@@ -12,6 +12,8 @@ SoFIE/BASS-II spread limits and ACME sooting indices):
                         the mid range, blow-off quench at high flow)
     H(material)       = 1 + 0.25*coolFlame + 0.15*smolder + 0.10*sootIndex
     risk_index        = clamp01( P_ign * F_flow * H )
+                        (callers multiply by G(gravity) — see
+                        backend/services/risk.py GRAVITY_FACTOR)
 
 LOC per material is re-estimated from parsed runs when enough burn/extinct
 points exist; otherwise the calibrated default is kept. All sources are
@@ -23,7 +25,7 @@ Inputs:
 
 Outputs:
     shared/calibrated-data/risk_model.json
-    frontend/src/data/risk_model.json       (bundle copy for offline TS mirror)
+    data/bundle/risk_model.json             (bundle copy)
 
 Usage:
     python data/pipelines/fit_risk_model.py
@@ -43,7 +45,7 @@ REPO = ROOT.parent
 EXP_CSV = ROOT / "processed" / "experiments.csv"
 CALIBRATION = REPO / "shared" / "calibrated-data" / "calibration.json"
 OUT = REPO / "shared" / "calibrated-data" / "risk_model.json"
-FRONTEND_OUT = REPO / "frontend" / "src" / "data" / "risk_model.json"
+BUNDLE_OUT = REPO / "data" / "bundle" / "risk_model.json"
 
 BURNED = {"burnout", "disruption"}
 EXTINCT = {"extinction", "no-ignition"}
@@ -246,9 +248,9 @@ def main() -> int:
             if spec.get("loc") is not None \
             else mat_loc.get(spec.get("materialId"))
     CALIBRATION.write_text(json.dumps(cal, indent=2))
-    fe_cal = REPO / "frontend" / "src" / "data" / "calibration.json"
-    if fe_cal.exists():
-        fe_cal.write_text(json.dumps(cal))
+    bundle_cal = REPO / "data" / "bundle" / "calibration.json"
+    bundle_cal.parent.mkdir(parents=True, exist_ok=True)
+    bundle_cal.write_text(json.dumps(cal))
 
     model = {
         "generated": "fit_risk_model.py",
@@ -276,8 +278,8 @@ def main() -> int:
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(model, indent=2))
-    FRONTEND_OUT.parent.mkdir(parents=True, exist_ok=True)
-    FRONTEND_OUT.write_text(json.dumps(model))
+    BUNDLE_OUT.parent.mkdir(parents=True, exist_ok=True)
+    BUNDLE_OUT.write_text(json.dumps(model))
 
     print(f"[DONE] risk model -> {OUT.relative_to(REPO)}")
     print(f"       {len(materials)} materials, {fitted} LOC values fitted "

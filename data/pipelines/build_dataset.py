@@ -1,9 +1,9 @@
-"""Build frontend/src/data/investigations.json from raw PSI/NTRS downloads.
+"""Build data/bundle/investigations.json from raw PSI/NTRS downloads.
 
 Pipeline:
     1. pipelines/psi_search.py  -> data/raw/psi_search_*.json + psi_investigations.json
     2. pipelines/ntrs_search.py -> data/raw/ntrs_*.json + ntrs_citations.json
-    3. pipelines/build_dataset.py -> frontend/src/data/investigations.json
+    3. pipelines/build_dataset.py -> data/bundle/investigations.json
 
 This script:
     - with no structured records: keeps the current starter dataset (no-op)
@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # data/
 REPO = ROOT.parent
-DATASET_PATH = REPO / "frontend" / "src" / "data" / "investigations.json"
+DATASET_PATH = ROOT / "bundle" / "investigations.json"
 STRUCTURED_DIR = ROOT / "raw" / "structured"
 STARTER_PATH = ROOT / "investigations.starter.json"
 
@@ -82,6 +82,15 @@ def merge_structured() -> None:
     # Merge: structured records override same-id starter records; nested
     # objects (conditions/metrics/data) merge key-wise so partial records
     # don't drop sibling fields.
+    if not DATASET_PATH.exists():
+        if not STARTER_PATH.exists():
+            print(
+                "[FAIL] no investigations dataset to merge into "
+                "(data/bundle/investigations.json missing)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        shutil.copy(STARTER_PATH, DATASET_PATH)
     dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     merged = {inv["id"]: inv for inv in dataset.get("investigations", [])}
     for rec in records:

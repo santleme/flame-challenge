@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Calibrate the C++ engine material table from the investigations dataset.
 
-Reads the merged dataset (frontend/src/data/investigations.json),
+Reads the merged dataset (data/bundle/investigations.json),
 aggregates per-fuel metrics into engine Materials, maps each
 investigation to a physics model, and writes
 shared/calibrated-data/calibration.json.
@@ -16,10 +16,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DATASET = ROOT / "frontend" / "src" / "data" / "investigations.json"
+DATASET = ROOT / "data" / "bundle" / "investigations.json"
 OUT = ROOT / "shared" / "calibrated-data" / "calibration.json"
 RISK_OUT = ROOT / "shared" / "calibrated-data" / "risk_profiles.json"
-FRONTEND_DATA = ROOT / "frontend" / "src" / "data"
+BUNDLE_DATA = ROOT / "data" / "bundle"
 
 # fuel name (dataset) -> material id (engine)
 FUEL_TO_MATERIAL = {
@@ -56,8 +56,7 @@ CATEGORY_MODEL = {
     "confined": "spread",
     "smoke-aerosol": "spread",
     # ACME coflow gas burners are diffusion flames, not liquid droplets —
-    # the SAFFIRE-type spread model is the closest engine regime and matches
-    # the TS dispatch in frontend/src/sim-bridge/physics.ts
+    # the SAFFIRE-type spread model is the closest engine regime
     "gaseous-diffusion": "spread",
     "partial-gravity": "spread",
 }
@@ -234,12 +233,13 @@ def main() -> int:
     PSI_OUT.write_text(json.dumps(psi_experiments, indent=2,
                                   ensure_ascii=False) + "\n")
 
-    # bundle copies for the frontend (shared/ stays canonical)
-    (FRONTEND_DATA / "calibration.json").write_text(
+    # bundle copies (shared/ stays canonical)
+    BUNDLE_DATA.mkdir(parents=True, exist_ok=True)
+    (BUNDLE_DATA / "calibration.json").write_text(
         json.dumps(payload, ensure_ascii=False) + "\n")
-    (FRONTEND_DATA / "risk_profiles.json").write_text(
+    (BUNDLE_DATA / "risk_profiles.json").write_text(
         json.dumps(risk_profiles, ensure_ascii=False) + "\n")
-    (FRONTEND_DATA / "psi_experiments.json").write_text(
+    (BUNDLE_DATA / "psi_experiments.json").write_text(
         json.dumps(psi_experiments, ensure_ascii=False) + "\n")
     # authored scenario/tech contracts: shared/ is the edit target, the
     # pipeline mirrors them into the bundle.
@@ -250,7 +250,7 @@ def main() -> int:
                 f"authored contract missing: {src} — create it under "
                 "shared/calibrated-data/ (see docs/NASA_PSI_REFERENCES.md)"
             )
-        (FRONTEND_DATA / authored).write_text(src.read_text())
+        (BUNDLE_DATA / authored).write_text(src.read_text())
     print(f"wrote calibration + risk_profiles + psi_experiments — "
           f"{len(materials)} materials, {len(inv_map)} investigations")
     return 0

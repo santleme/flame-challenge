@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-void: #05070d;
+  --color-panel: #0b1220;
+  --color-edge: #cbd5e1;
+  --color-flame: #ff6b35;
+  --color-ember: #f59e0b;
+  --color-ice: #49b8d6;
+  --color-mist: #7d8a99;
+  --color-paper: #f3f2ed;
+  --color-ink: #17212b;
+  --font-sans: 'IBM Plex Mono', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f4f3ee;
+  --ink: #17212b;
+  --panel: #ffffffa6;
+  --edge: #17212b26;
+  --accent: #49b8d6;
+  --olive: #9e9a82;
+  --font-ui: 'IBM Plex Mono', 'Courier Prime', monospace;
+  --font-display: 'Space Mono', 'Courier Prime', monospace;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --ink: #edf4fa;
+  --panel: #0b1220a6;
+  --edge: #cbd5e13d;
+  --accent: #49b8d6;
+}
+
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  transition: background-color .35s, color .35s;
+}
+
+.caret {
+  display: inline-block;
+  height: .78em;
+  margin-left: .08em;
+  border-left: .055em solid currentColor;
+  vertical-align: -.02em;
+  animation: cursor-blink .82s steps(1, end) infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
+@keyframes reveal-surfaces { from { opacity: 0; } to { opacity: .85; } }
+
+.hero-shade {
+  background:
+    radial-gradient(ellipse at 50% 48%, #fff0 0%, transparent 58%),
+    linear-gradient(#fff2, transparent 35%, transparent 68%, #e8e7e1a6);
+}
+[data-theme="dark"] .hero-shade {
+  background:
+    radial-gradient(ellipse at 50% 48%, #0005 0%, transparent 58%),
+    linear-gradient(#0005, transparent 35%, transparent 68%, #000a);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret { animation: none; }
+  .heat-surface { animation: none; opacity: .85; }
+}

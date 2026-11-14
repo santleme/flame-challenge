@@ -1,6 +1,6 @@
-# Dataset schema — `frontend/src/data/investigations.json`
+# Dataset schema — `data/bundle/investigations.json`
 
-The app consumes a single JSON file typed as `Dataset` in `frontend/src/types.ts`.
+The merged dataset lives in a single JSON file (`data/bundle/investigations.json`).
 
 ```jsonc
 {

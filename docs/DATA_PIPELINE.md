@@ -44,7 +44,7 @@ but search metadata + file trees + per-file downloads are public.
 | `normalize_experiments.py` | parse test sheets/CSVs → `processed/experiments.csv|json` |
 | `build_index.py` | merge all corpora → `processed/search_index.json`, `citations.json` |
 | `fit_risk_model.py` | empirical LOC + risk surface → `shared/calibrated-data/risk_model.json` |
-| `build_dataset.py` | merge curated/structured records → `frontend/src/data/investigations.json` |
+| `build_dataset.py` | merge curated/structured records → `data/bundle/investigations.json` |
 | `calibrate_constants.py` | dataset → `shared/calibrated-data/calibration.json` + `risk_profiles.json` |
 
 ## Normalized experiment schema (`experiments.csv`)

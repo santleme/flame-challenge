@@ -196,13 +196,13 @@ def test_merge_preserves_investigation_links_across_reloads(tmp_path):
 
 # ---- build_dataset --sample restore path ----
 
-def test_restore_starter_outside_data_root(monkeypatch, tmp_path, capsys):
-    # dataset lives under <repo>/frontend — outside data/ — exactly the
-    # post-restructure layout that made relative_to(ROOT) raise ValueError
+def test_restore_starter_relocated_dataset(monkeypatch, tmp_path, capsys):
+    # relocated dataset layouts made relative_to() raise ValueError —
+    # _rel() must still print a sensible path
     starter = tmp_path / "data" / "starter.json"
     starter.parent.mkdir(parents=True)
     starter.write_text('{"investigations": []}', encoding="utf-8")
-    dataset = tmp_path / "frontend" / "src" / "data" / "investigations.json"
+    dataset = tmp_path / "data" / "bundle" / "investigations.json"
     dataset.parent.mkdir(parents=True)
     dataset.write_text('{"investigations": [{"id": "x"}]}', encoding="utf-8")
     monkeypatch.setattr(build_dataset, "DATASET_PATH", dataset)
@@ -217,7 +217,7 @@ def test_sample_command_exit_status(monkeypatch, tmp_path):
     starter = tmp_path / "data" / "starter.json"
     starter.parent.mkdir(parents=True)
     starter.write_text('{"investigations": []}', encoding="utf-8")
-    dataset = tmp_path / "frontend" / "src" / "data" / "investigations.json"
+    dataset = tmp_path / "data" / "bundle" / "investigations.json"
     dataset.parent.mkdir(parents=True)
     dataset.write_text('{"investigations": [{"id": "x"}]}', encoding="utf-8")
     monkeypatch.setattr(build_dataset, "DATASET_PATH", dataset)
@@ -233,8 +233,8 @@ def test_fit_risk_fails_without_calibration(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(fit_risk_model, "CALIBRATION",
                         tmp_path / "missing.json")
     monkeypatch.setattr(fit_risk_model, "OUT", tmp_path / "risk_model.json")
-    monkeypatch.setattr(fit_risk_model, "FRONTEND_OUT",
-                        tmp_path / "fe_risk.json")
+    monkeypatch.setattr(fit_risk_model, "BUNDLE_OUT",
+                        tmp_path / "bundle_risk.json")
     assert fit_risk_model.main() == 1
     assert not (tmp_path / "risk_model.json").exists()
     assert "calibration" in capsys.readouterr().err.lower()
@@ -297,12 +297,12 @@ def test_calibrate_emits_effective_loc(monkeypatch, tmp_path):
     (tmp_path / "shared" / "calibrated-data").mkdir(parents=True)
     for f in ("historical_scenarios.json", "tech_spinoffs.json"):
         (tmp_path / "shared" / "calibrated-data" / f).write_text("{}")
-    (tmp_path / "fe").mkdir()
+    (tmp_path / "bundle").mkdir()
     monkeypatch.setattr(calib, "ROOT", tmp_path)
     monkeypatch.setattr(calib, "DATASET", tmp_path / "ds.json")
     monkeypatch.setattr(calib, "OUT", tmp_path / "calibration.json")
     monkeypatch.setattr(calib, "RISK_OUT", tmp_path / "risk_profiles.json")
-    monkeypatch.setattr(calib, "FRONTEND_DATA", tmp_path / "fe")
+    monkeypatch.setattr(calib, "BUNDLE_DATA", tmp_path / "bundle")
     assert calib.main() == 0
     cal = json.loads((tmp_path / "calibration.json").read_text())
     spec = cal["investigations"]["demo-flex"]
@@ -339,7 +339,7 @@ def test_fit_propagates_fitted_loc_to_calibration(monkeypatch, tmp_path):
     monkeypatch.setattr(fit_risk_model, "EXP_CSV", exp)
     monkeypatch.setattr(fit_risk_model, "CALIBRATION", cal_path)
     monkeypatch.setattr(fit_risk_model, "OUT", tmp_path / "risk_model.json")
-    monkeypatch.setattr(fit_risk_model, "FRONTEND_OUT", tmp_path / "fe.json")
+    monkeypatch.setattr(fit_risk_model, "BUNDLE_OUT", tmp_path / "bundle.json")
     monkeypatch.setattr(fit_risk_model, "REPO", tmp_path)
     assert fit_risk_model.main() == 0
     patched = json.loads(cal_path.read_text())

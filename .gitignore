@@ -44,3 +44,6 @@ data/processed/experiments.json
 build/
 *.o
 *.a
+
+# TS incremental build info
+*.tsbuildinfo

@@ -1,7 +1,7 @@
 # NASA PSI data references — how each mechanic is anchored
 
 Every experiment card in the game is a real record from the merged
-dataset (`frontend/src/data/investigations.json`, sourced from the
+dataset (`data/bundle/investigations.json`, sourced from the
 NASA Physical Sciences Informatics repository — psi.nasa.gov/physci/repo).
 
 | Game element | Dataset field(s) | Record(s) |

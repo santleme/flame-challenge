@@ -4,7 +4,7 @@ Merges every corpus the pipeline produces into one document store that the
 backend serves (deterministic, offline — no embeddings service needed):
 
     data/raw/psi_investigations.json      PSI catalog metadata (27 records)
-    frontend/src/data/investigations.json curated app dataset
+    data/bundle/investigations.json       curated app dataset
     data/processed/experiments.json       normalized per-test rows
     data/raw/ntrs_citations.json          NTRS citation catalog
     data/raw/files/<ACC>/_manifest.json   PSI file inventories
@@ -28,10 +28,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # data/
-REPO = ROOT.parent
 RAW = ROOT / "raw"
 OUT = ROOT / "processed"
-DATASET = REPO / "frontend" / "src" / "data" / "investigations.json"
+DATASET = ROOT / "bundle" / "investigations.json"
 
 STOP = {
     "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",

@@ -15,7 +15,6 @@ hidden-flame incident is computed from **real NASA Physical Sciences
 Informatics (PSI) records** and a compiled **C++20 physics core**.
 
 <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white" alt="C++20" />
-<img src="https://img.shields.io/badge/TypeScript-React%20%2B%20PixiJS-3178C6?logo=typescript&logoColor=white" alt="TypeScript + PixiJS" />
 <img src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
 <img src="https://img.shields.io/badge/data-NASA%20PSI%20records-0B3D91" alt="NASA PSI data" />
 
@@ -23,19 +22,16 @@ Informatics (PSI) records** and a compiled **C++20 physics core**.
 
 ---
 
-## Play it
+## Run it
 
 ```bash
-# 1) frontend (required)
-cd frontend && npm install && npm run dev        # → http://localhost:5173
-
-# 2) C++ physics backend (optional — the game falls back to a local model)
+# C++ physics backend
 python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 cd core && cmake -S . -B build -DPython3_EXECUTABLE=/usr/bin/python3 \
   && cmake --build build -j && cd ..
 .venv/bin/python data/pipelines/calibrate_constants.py
 .venv/bin/uvicorn backend.api.main:app --port 8000
-# the "C++" badge in the top bar turns green
+# → http://localhost:8000/docs for the interactive API
 ```
 
 ## The loop
@@ -57,9 +53,9 @@ cd core && cmake -S . -B build -DPython3_EXECUTABLE=/usr/bin/python3 \
 core/      C++20 physics: droplet d²-law (FLEX), SAFFIRE spread,
            ACME material risk + pybind11 (Emscripten-ready)
 data/      NASA PSI/NTRS ETL → experiments.csv, search index, risk model
+           (+ data/bundle/: merged dataset & generated JSON artifacts)
 backend/   FastAPI bridge: /api/chamber/preview, WS /ws/chamber,
            /api/search, /api/ask, /api/risk(+curve/materials)
-frontend/  React + TypeScript + PixiJS game client
 docs/      ARCHITECTURE.md, DATA_PIPELINE.md,
            NASA_PSI_REFERENCES.md, challenge brief
 ```
@@ -88,7 +84,7 @@ O₂ × ventilation × material × gravity). Recipe: `docs/DATA_PIPELINE.md`.
 
 | Doc | Contents |
 | --- | -------- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | End-to-end data flow: C++ core → FastAPI → PixiJS client |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | End-to-end data flow: C++ core → FastAPI |
 | [`docs/DATA_PIPELINE.md`](docs/DATA_PIPELINE.md) | ETL recipe, PSI/NTRS sources, calibration |
 | [`docs/NASA_PSI_REFERENCES.md`](docs/NASA_PSI_REFERENCES.md) | Mechanic → dataset mapping (FLEX, ACME, SAFFIRE…) |
 | [`docs/challenge-brief.md`](docs/challenge-brief.md) | NASA Space Apps 2026 challenge brief |
