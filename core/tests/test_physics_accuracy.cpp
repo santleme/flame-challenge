@@ -101,6 +101,87 @@ int main() {
         CHECK(p15 < p21 && p21 < p30, "ignition pressure must grow with O2");
     }
 
+    // --- Mir 1997 (CHEMICAL_GENERATOR): self-oxidizing fire survives
+    //     below LOC — SAFFIRE-IV would extinguish in ambient cabin ---
+    {
+        Chamber mir(risks);
+        Chamber::Config mc;
+        mc.materialId = "pmma";
+        mc.model = "spread";
+        mc.o2Pct = 10.0; // below PMMA LOC (15%) — ambient fire would die
+        mc.o2Source = O2SourceType::ChemicalGenerator;
+        mc.seed = 4;
+        mir.configure(mc);
+        for (int i = 0; i < 300; ++i) mir.step(0.02);
+        CHECK(mir.regime() == 1,
+              "Mir chemical-generator fire must keep spreading below LOC");
+
+        Chamber saffire(risks);
+        Chamber::Config sc;
+        sc.materialId = "pmma";
+        sc.model = "spread";
+        sc.o2Pct = 10.0;
+        sc.o2Source = O2SourceType::AmbientCabin;
+        sc.seed = 4;
+        saffire.configure(sc);
+        for (int i = 0; i < 300; ++i) saffire.step(0.02);
+        CHECK(saffire.regime() != 1,
+              "ambient-cabin fire must extinguish below LOC (SAFFIRE-IV)");
+
+        // continuous cooling stops the Mir fire
+        mir.applyCooling(true);
+        bool stopped = false;
+        for (int i = 0; i < 400 && !stopped; ++i) {
+            mir.step(0.02);
+            stopped = mir.regime() != 1 || mir.finished();
+        }
+        CHECK(stopped, "cooling must stop the Mir self-oxidizing fire");
+    }
+
+    // --- Apollo 1 (ENRICHED_PRESSURE): far faster spread than ambient ---
+    {
+        Chamber::Config ap;
+        ap.materialId = "nomex";
+        ap.model = "spread";
+        ap.o2Pct = 34.0; // Apollo 1 cabin: enriched, high pressure
+        ap.o2Source = O2SourceType::EnrichedPressure;
+        ap.seed = 5;
+
+        Chamber enriched(risks);
+        enriched.configure(ap);
+        const Chamber::Config base = ap;
+        Chamber ambient(risks);
+        Chamber::Config bc = base;
+        bc.o2Source = O2SourceType::AmbientCabin;
+        ambient.configure(bc);
+
+        for (int i = 0; i < 300; ++i) { enriched.step(0.02); ambient.step(0.02); }
+        CHECK(enriched.regime() == 1, "enriched O2 must sustain spread");
+        CHECK(enriched.riskVector().spreadVelocityMms >
+                  ambient.riskVector().spreadVelocityMms,
+              "Apollo-1 regime must spread faster than ambient");
+    }
+
+    // --- risk vector axes respond to spin-off modifiers ---
+    {
+        const Material* hep = risks.get("heptane");
+        CHECK(hep != nullptr, "heptane material must exist");
+        const RiskVector base = MaterialRisk::riskVector(*hep, 21.0, 5.0);
+        CHECK(base.ignitionRisk > 0.0 && base.ignitionRisk <= 1.0,
+              "ignition risk must be in (0,1] at 21% O2");
+        CHECK(base.spreadVelocityMms > 0.0,
+              "spread velocity must be positive at 21% O2");
+        CHECK(base.coolFlameStealthIndex > 0.5,
+              "heptane (cool-flame capable) must have high stealth index");
+        TechModifiers det;
+        det.detectionLatencyMult = 0.4; // Shuttle smoke detector spin-off
+        const RiskVector mod = MaterialRisk::riskVector(*hep, 21.0, 5.0, det);
+        CHECK(mod.coolFlameStealthIndex < base.coolFlameStealthIndex,
+              "detector spin-off must reduce cool-flame stealth");
+        CHECK(std::abs(mod.ignitionRisk - base.ignitionRisk) < 1e-9,
+              "detectors must not change ignition physics");
+    }
+
     if (failures == 0) std::printf("all physics checks passed\n");
     return failures ? 1 : 0;
 }
