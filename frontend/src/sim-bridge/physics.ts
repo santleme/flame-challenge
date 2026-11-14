@@ -1,4 +1,5 @@
 import type { Investigation } from '../types'
+import { ignitionPressureLocal, limitingO2 } from '../game/experiments'
 
 /**
  * Physics client — prefers the compiled C++ engine behind the FastAPI
@@ -71,20 +72,12 @@ export async function previewExperiment(
   }
 
   const out: PhysicsPreview = {
-    ignitionPressure: localIgnitionPressure(inv, o2),
+    ignitionPressure: ignitionPressureLocal(inv, o2),
     model: inv.category === 'droplet' ? 'droplet' : 'spread',
     materialId: 'local',
-    loc: inv.metrics.limitingOxygenPct,
+    loc: limitingO2(inv),
     engine: 'local',
   }
   previewCache.set(key, out)
   return out
-}
-
-/** mirror of MaterialRisk::ignitionPressure for offline parity */
-function localIgnitionPressure(inv: Investigation, o2: number): number {
-  const loc = inv.metrics.limitingOxygenPct ?? (inv.conditions.oxygenPct?.[0] ?? 17)
-  const margin = o2 - loc
-  if (margin <= 0) return margin > -3 ? 0.04 : 0
-  return Math.min(1, 0.04 + 0.055 * Math.pow(margin, 1.35))
 }

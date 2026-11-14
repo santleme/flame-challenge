@@ -432,11 +432,32 @@ def _mid(a: str | None, b: str | None) -> float | None:
     return (lo + hi) / 2
 
 
+def _flag(text: str | None) -> bool | None:
+    """Structured yes/no cell — leading token decides, qualifiers are
+    ignored: 'yes, PCI-G' → True, 'no, PCI-hot' → False. 'n/a' means
+    unrecorded, NOT a recorded 'no' — returns None like an empty cell."""
+    v = (text or "").strip().lower()
+    if not v or v in ("n/a", "na", "none", "-", "?", "unknown"):
+        return None
+    if re.match(r"yes|true|y\b|1\b", v):
+        return True
+    if re.match(r"no\b|false|n\b|0\b|fail", v):
+        return False
+    return None
+
+
 def _legacy_outcome(r: dict) -> tuple[str, str]:
     mode = (r.get("extinction_mode") or "").strip().lower()
-    ign = (r.get("ignition_flag") or "").strip().lower()
-    if ign in ("no", "false", "0", "failed"):
+    if _flag(r.get("ignition_flag")) is False:
         return "no-ignition", "none"
+    # CFI summary-table codes — same mapping sniff_csv_rows applies to
+    # raw files: FT = flow terminated mid-burn, SE = self-extinguished
+    if mode in ("ft", "flow termination"):
+        return "burnout", "none"
+    if mode in ("se", "self-extinguishment", "self extinguishment"):
+        return "extinction", "oxygen-limit"
+    if mode in ("-", "n/a", "na", "none"):
+        mode = ""
     if mode:
         # specific regimes before the generic "o2" token — "co2 suppression"
         # contains "o2" as a substring and must reach the suppressant branch
@@ -452,15 +473,73 @@ def _legacy_outcome(r: dict) -> tuple[str, str]:
     return "unknown", "none"
 
 
+def _flex_end_outcome(r: dict) -> tuple[str, str]:
+    """PSI-69 records the true test ending in extra_json['Test end']
+    (Extinction / Disruption / Completion) — not in extinction_mode."""
+    if _flag(r.get("ignition_flag")) is False:
+        return "no-ignition", "none"
+    try:
+        end = str(json.loads(r.get("extra_json") or "{}")
+                  .get("Test end") or "").strip().lower()
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        end = ""
+    if end == "extinction":
+        text = f"{r.get('comments') or ''} {r.get('notes') or ''}".lower()
+        _, et, _c = classify_outcome(text, None)
+        # FLEX droplet flames die by radiative loss — the recorded regime
+        # unless comments say otherwise
+        return "extinction", et if et not in ("", "none") else "radiative"
+    if end == "disruption":
+        return "disruption", "none"
+    if end == "completion":
+        return "burnout", "none"
+    return _legacy_outcome(r)
+
+
+def _flex_points_cirs() -> set[str]:
+    """CIR test numbers present in flex_test_points.csv — the richer
+    per-test table. experimental_runs rows carrying the same CIR are
+    the same test under a different run_id and must not double-count."""
+    path = LEGACY_DIR / "flex_test_points.csv"
+    if not path.exists():
+        return set()
+    return {(r.get("cir_test_number") or "").strip()
+            for r in csv.DictReader(
+                path.open(encoding="utf-8", errors="replace"))}
+
+
+def _flex_runs_meta() -> dict[str, dict]:
+    """PSI-69 experimental_runs rows keyed by CIR test number — the
+    authoritative outcome metadata (Test end, ignition/cool flags,
+    burn time) for the richer flex_test_points physics rows."""
+    path = LEGACY_DIR / "experimental_runs.csv"
+    if not path.exists():
+        return {}
+    lut: dict[str, dict] = {}
+    for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
+        if (r.get("accession") or "").strip() != "PSI-69":
+            continue
+        parts = (r.get("data_id") or "").split(";")
+        if len(parts) > 1 and parts[1].strip():
+            lut.setdefault(parts[1].strip(), r)
+    return lut
+
+
 def parse_legacy_runs(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "experimental_runs.csv"
     if not path.exists():
         return []
+    flex_cirs = _flex_points_cirs()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
         if not acc or acc in covered or acc not in ACCESSIONS:
             continue
+        if acc == "PSI-69":
+            parts = (r.get("data_id") or "").split(";")
+            cir = parts[1].strip() if len(parts) > 1 else ""
+            if cir and cir in flex_cirs:
+                continue  # emitted by parse_legacy_flex with richer fields
         inv = ACCESSIONS[acc][0]
         fuel = (r.get("fuel_or_material") or r.get("fuel_bottle") or "").strip() or None
         comments = (r.get("comments") or r.get("notes") or "").strip()
@@ -472,21 +551,30 @@ def parse_legacy_runs(covered: set[str]) -> list[dict]:
         if extras:
             comments = f"{comments} | {'; '.join(extras)}" if comments \
                 else "; ".join(extras)
-        outcome, etype = _legacy_outcome(r)
+        outcome, etype = _flex_end_outcome(r) if acc == "PSI-69" \
+            else _legacy_outcome(r)
         # structured flag wins over comment text in BOTH directions — an
-        # explicit "no" is a recorded non-observation, comments can't flip it
-        cool_flag = (r.get("cool_flame_flag") or "").strip().lower()
-        if cool_flag in ("no", "false", "0", "n"):
-            cool = False
-        elif cool_flag in ("yes", "true", "1", "y"):
-            cool = True
-        else:
+        # explicit "no" is a recorded non-observation, comments can't flip
+        # it; qualifiers after the token ('yes, PCI-G') are ignored
+        cool = _flag(r.get("cool_flame_flag"))
+        if cool is None:
             cool = cool_flame_observed(comments)
         o2 = _mid(r.get("o2_pct_min"), r.get("o2_pct_max"))
         if o2 is None:
             o2mf = _mid(r.get("o2_mf_min"), r.get("o2_mf_max"))
             o2 = o2mf * 100 if o2mf is not None else None
         atm = _mid(r.get("pressure_atm_min"), r.get("pressure_atm_max"))
+        flow = _mid(r.get("airflow_cm_s_min"), r.get("airflow_cm_s_max"))
+        dext = _mid(r.get("dext_mm_min"), r.get("dext_mm_max"))
+        btime = _num1(r.get("burn_time_s"))
+        # non-test rows: figure captions carry no specimen and no measured
+        # conditions; pre-test flow-visualization records are ops metadata
+        fuel_txt = (r.get("fuel_or_material") or "").strip()
+        if (fuel is None and o2 is None and flow is None and dext is None
+                and btime is None):
+            continue
+        if re.match(r"pre[- ]?test|flow visu", fuel_txt, re.I):
+            continue
         out.append({
             "run_id": (r.get("data_id") or "").strip()
                       or f"{acc}-row{r.get('row_idx', '?')}",
@@ -500,11 +588,11 @@ def parse_legacy_runs(covered: set[str]) -> list[dict]:
             "he_pct": _num1(r.get("he_mf_raw")) and round(_num1(r["he_mf_raw"]) * 100, 2),
             "pressure_kpa": round(atm * 101.325, 2) if atm is not None else None,
             "temp_k": _num1(r.get("temperature_k_raw")),
-            "flow_cms": _mid(r.get("airflow_cm_s_min"), r.get("airflow_cm_s_max")),
+            "flow_cms": flow,
             "droplet_d0_mm": _mid(r.get("d0_mm_min"), r.get("d0_mm_max")),
             "burn_rate_mm2_s": None,
-            "burn_time_s": _num1(r.get("burn_time_s")),
-            "extinction_d_mm": _mid(r.get("dext_mm_min"), r.get("dext_mm_max")),
+            "burn_time_s": btime,
+            "extinction_d_mm": dext,
             "outcome": outcome,
             "extinction_type": etype,
             "cool_flame": cool,
@@ -523,6 +611,7 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
     path = LEGACY_DIR / "flex_test_points.csv"
     if not path.exists():
         return []
+    meta = _flex_runs_meta()
     out: list[dict] = []
     for r in csv.DictReader(path.open(encoding="utf-8", errors="replace")):
         acc = (r.get("accession") or "").strip()
@@ -532,7 +621,18 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
         fuel = (r.get("fuel_or_material") or "").strip() or None
         comments = (r.get("comments") or "").strip()
         dext = _num1(r.get("dext_mm"))
-        outcome, etype, cool = classify_outcome(comments, dext)
+        # the matching experimental_runs row carries the authoritative
+        # end state — Test end beats the comment-derived outcome
+        m = meta.get((r.get("cir_test_number") or "").strip())
+        burn_time = None
+        if m is not None:
+            outcome, etype = _flex_end_outcome(m)
+            cool = _flag(m.get("cool_flame_flag"))
+            if cool is None:
+                cool = cool_flame_observed(comments)
+            burn_time = _num1(m.get("burn_time_s"))
+        else:
+            outcome, etype, cool = classify_outcome(comments, dext)
         atm = _num1(r.get("pressure_atm"))
         out.append({
             "run_id": (r.get("test_id") or "").strip() or f"{acc}-tp",
@@ -549,7 +649,7 @@ def parse_legacy_flex(covered: set[str]) -> list[dict]:
             "flow_cms": None,
             "droplet_d0_mm": _num1(r.get("d0_mm")),
             "burn_rate_mm2_s": _num1(r.get("kavg_mm2_s")),
-            "burn_time_s": None,
+            "burn_time_s": burn_time,
             "extinction_d_mm": dext if dext and dext > 0 else None,
             "outcome": outcome,
             "extinction_type": etype,

@@ -147,15 +147,29 @@ export function buildInsights(
   const ignitable = withMat.filter(
     ({ m }) => !riskIndexLocal(m, cond.o2Pct, cond.flowCms, gravity).flags.belowLoc,
   )
+  // suppressing every ignitable material means getting below the LOWEST
+  // LOC in that set — the max LOC is irrelevant to the guidance
+  const bindingLoc = ignitable.length
+    ? Math.min(
+        ...ignitable.map(
+          ({ m }) => riskIndexLocal(m, cond.o2Pct, cond.flowCms, gravity).locPct,
+        ),
+      )
+    : null
   out.push({
     id: 'loc-margins',
     kind: 'atmosphere',
     severity: ignitable.length > withMat.length / 2 ? 'high' : 'medium',
-    title: `${ignitable.length}/${withMat.length} mapped materials ignitable at ${cond.o2Pct}% O₂`,
-    body:
-      'Materials whose limiting-oxygen index sits below cabin O₂ retain non-zero ignition ' +
-      'pressure. Dropping cabin O₂ toward the highest LOC in the matrix is the single largest ' +
-      'flammability lever — NASA exploration targets ~16.5–18% for that reason.',
+    title: ignitable.length
+      ? `${ignitable.length}/${withMat.length} mapped materials ignitable at ${cond.o2Pct}% O₂`
+      : `No mapped material ignitable at ${cond.o2Pct}% O₂`,
+    body: ignitable.length
+      ? 'Materials whose limiting-oxygen index sits below cabin O₂ retain non-zero ignition ' +
+        `pressure. The binding limit is the lowest LOC in that set (${bindingLoc}%) — ` +
+        'dropping cabin O₂ below it suppresses every mapped ignition; NASA exploration ' +
+        'targets ~16.5–18% for that reason.'
+      : 'Every mapped material LOC sits above the cabin setting — ignition pressure is at ' +
+        'its residual floor across the matrix.',
     sources: ignitable.map((x) => x.i.name),
   })
 

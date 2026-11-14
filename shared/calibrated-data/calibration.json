@@ -12,7 +12,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "same"
-      ]
+      ],
+      "locBaseline": 16.5
     },
     {
       "id": "cotton",
@@ -26,7 +27,8 @@
       "sourceInvestigations": [
         "bass-ii",
         "saffire"
-      ]
+      ],
+      "locBaseline": 17
     },
     {
       "id": "decanol",
@@ -39,7 +41,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "flex-2"
-      ]
+      ],
+      "locBaseline": 12.5
     },
     {
       "id": "ethylene",
@@ -52,7 +55,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "acme"
-      ]
+      ],
+      "locBaseline": 11.0
     },
     {
       "id": "heptane",
@@ -66,6 +70,7 @@
       "sourceInvestigations": [
         "flex-2"
       ],
+      "locBaseline": 12.0,
       "locSource": "psi-data",
       "locMethod": "extinction-floor"
     },
@@ -80,7 +85,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "flex-2"
-      ]
+      ],
+      "locBaseline": 12.0
     },
     {
       "id": "jp8",
@@ -93,7 +99,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "acme"
-      ]
+      ],
+      "locBaseline": 11.5
     },
     {
       "id": "kapton",
@@ -106,7 +113,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "same"
-      ]
+      ],
+      "locBaseline": 24.0
     },
     {
       "id": "methane",
@@ -119,7 +127,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "acme"
-      ]
+      ],
+      "locBaseline": 12.0
     },
     {
       "id": "methanol",
@@ -133,6 +142,7 @@
       "sourceInvestigations": [
         "flex-2"
       ],
+      "locBaseline": 12.5,
       "locSource": "psi-data",
       "locMethod": "extinction-floor"
     },
@@ -148,7 +158,8 @@
       "sourceInvestigations": [
         "bass-ii",
         "saffire"
-      ]
+      ],
+      "locBaseline": 17
     },
     {
       "id": "panels",
@@ -161,7 +172,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "saffire"
-      ]
+      ],
+      "locBaseline": 18.0
     },
     {
       "id": "pmma",
@@ -177,7 +189,8 @@
         "saffire",
         "confined-combustion",
         "flare"
-      ]
+      ],
+      "locBaseline": 15
     },
     {
       "id": "pmma-sphere",
@@ -190,7 +203,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "bass-ii"
-      ]
+      ],
+      "locBaseline": 17
     },
     {
       "id": "polycarbonate",
@@ -203,7 +217,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "bass-ii"
-      ]
+      ],
+      "locBaseline": 17
     },
     {
       "id": "propane",
@@ -216,7 +231,8 @@
       "smoldering": false,
       "sourceInvestigations": [
         "acme"
-      ]
+      ],
+      "locBaseline": 11.5
     },
     {
       "id": "pyrell",
@@ -229,7 +245,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "same"
-      ]
+      ],
+      "locBaseline": 15.0
     },
     {
       "id": "silicone",
@@ -242,7 +259,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "same"
-      ]
+      ],
+      "locBaseline": 22.0
     },
     {
       "id": "teflon",
@@ -255,7 +273,8 @@
       "smoldering": true,
       "sourceInvestigations": [
         "same"
-      ]
+      ],
+      "locBaseline": 30.0
     },
     {
       "id": "thin-sheet",
@@ -269,7 +288,8 @@
       "sourceInvestigations": [
         "confined-combustion",
         "flare"
-      ]
+      ],
+      "locBaseline": 16.0
     }
   ],
   "investigations": {

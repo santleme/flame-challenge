@@ -118,6 +118,10 @@ def main() -> int:
               file=sys.stderr)
         return 1
     cal = json.loads(CALIBRATION.read_text())
+    # preserve the literature LOC in its own field — once a psi-data fit
+    # is written back, locPct alone can no longer tell fit from baseline
+    for m in cal.get("materials", []):
+        m.setdefault("locBaseline", m.get("locPct"))
 
     stats: dict[str, dict] = {}
     for r in rows:
@@ -163,7 +167,7 @@ def main() -> int:
     for m in cal.get("materials", []):
         mid = m["id"]
         s = stats.get(mid)
-        loc, loc_src = m.get("locPct", 17.0), "calibration"
+        loc, loc_src = m.get("locBaseline", m.get("locPct", 17.0)), "calibration"
         entry: dict = {
             "id": mid, "name": m.get("name", mid),
             "locPct": loc, "locSource": loc_src,
@@ -218,27 +222,33 @@ def main() -> int:
             + 0.10 * float(entry["sootIndex"]), 3)
         materials[mid] = entry
 
-    # propagate fitted LOCs back into calibration.json — the C++ chamber
-    # (materials[].locPct), the backend bridge and the TS fallback must all
-    # burn with ONE canonical value; investigations[].effectiveLoc follows
-    # the same loc ?? material rule calibrate_constants.py emits
-    if fitted:
-        for m in cal.get("materials", []):
-            fitted_mat = materials.get(m["id"])
-            if fitted_mat and fitted_mat.get("locSource") == "psi-data":
-                m["locPct"] = fitted_mat["locPct"]
-                m["locSource"] = "psi-data"
-                if fitted_mat.get("locMethod"):
-                    m["locMethod"] = fitted_mat["locMethod"]
-        mat_loc = {m["id"]: m.get("locPct") for m in cal.get("materials", [])}
-        for spec in cal.get("investigations", {}).values():
-            spec["effectiveLoc"] = spec.get("loc") \
-                if spec.get("loc") is not None \
-                else mat_loc.get(spec.get("materialId"))
-        CALIBRATION.write_text(json.dumps(cal, indent=2))
-        fe_cal = REPO / "frontend" / "src" / "data" / "calibration.json"
-        if fe_cal.exists():
-            fe_cal.write_text(json.dumps(cal))
+    # propagate the canonical LOC back into calibration.json — the C++
+    # chamber (materials[].locPct), the backend bridge and the TS fallback
+    # must all burn with ONE value; investigations[].effectiveLoc follows
+    # the same loc ?? material rule calibrate_constants.py emits. This
+    # runs every time, not only when something fitted: a material whose
+    # evidence dropped below the fitting bar reverts to locBaseline
+    # instead of silently keeping a stale psi-data number.
+    for m in cal.get("materials", []):
+        fitted_mat = materials.get(m["id"])
+        if fitted_mat and fitted_mat.get("locSource") == "psi-data":
+            m["locPct"] = fitted_mat["locPct"]
+            m["locSource"] = "psi-data"
+            if fitted_mat.get("locMethod"):
+                m["locMethod"] = fitted_mat["locMethod"]
+        elif m.get("locSource") == "psi-data":
+            m["locPct"] = m.get("locBaseline", m["locPct"])
+            m["locSource"] = "calibration"
+            m.pop("locMethod", None)
+    mat_loc = {m["id"]: m.get("locPct") for m in cal.get("materials", [])}
+    for spec in cal.get("investigations", {}).values():
+        spec["effectiveLoc"] = spec.get("loc") \
+            if spec.get("loc") is not None \
+            else mat_loc.get(spec.get("materialId"))
+    CALIBRATION.write_text(json.dumps(cal, indent=2))
+    fe_cal = REPO / "frontend" / "src" / "data" / "calibration.json"
+    if fe_cal.exists():
+        fe_cal.write_text(json.dumps(cal))
 
     model = {
         "generated": "fit_risk_model.py",

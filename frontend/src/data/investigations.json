@@ -214,13 +214,12 @@
       ],
       "data": {
         "availability": "full",
-        "psiUrl": "https://psi.nasa.gov/physci/repo/data/investigation/PSI-142"
+        "psiUrl": "https://psi.nasa.gov/physci/repo/data/investigation/PSI-39"
       },
       "publications": 45,
       "verified": true,
-      "psiRuns": 307,
+      "psiRuns": 299,
       "psiAccessions": [
-        "PSI-142",
         "PSI-39",
         "PSI-68",
         "PSI-69"
@@ -302,7 +301,7 @@
       },
       "publications": 60,
       "verified": true,
-      "psiRuns": 640,
+      "psiRuns": 629,
       "psiAccessions": [
         "PSI-10",
         "PSI-159",
@@ -439,7 +438,7 @@
       },
       "publications": 22,
       "verified": true,
-      "psiRuns": 21,
+      "psiRuns": 13,
       "psiAccessions": [
         "PSI-100",
         "PSI-98",
@@ -449,10 +448,6 @@
         "Cotton-Fiberglass (SIBAL)",
         "PMMA",
         "PMMA & Nomex",
-        "Pre-test flow visulation data for sample 1",
-        "Pre-test flow visulation data for sample 2",
-        "Pre-test flow visulation data for sample 2-1",
-        "Pre-test flow visulation data for sample 2-2",
         "SIBAL Fabric",
         "Silicone"
       ],

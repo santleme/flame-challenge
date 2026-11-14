@@ -343,7 +343,7 @@
     }
   },
   "provenance": {
-    "psiRunsParsed": 1090,
+    "psiRunsParsed": 1063,
     "materialsFittedFromPsi": 2,
     "note": "locSource=psi-data -> LOC re-estimated from parsed PSI test sheets: locMethod=boundary-midpoint for clean burn/extinct separation, extinction-floor for droplet fuels (median of 3 lowest limit-type radiative/cool-flame extinctions excluded). locSource=calibration -> literature-seeded. extinctionLimitMin/MaxPct = measured extinction envelope (includes radiative extinctions \u2014 not a flammability limit)."
   }
