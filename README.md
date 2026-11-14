@@ -34,7 +34,8 @@ npm run lint       # oxlint
 npm run preview    # serve the build
 ```
 
-Data pipeline (Python 3.12+, stdlib only):
+Data pipeline (Python 3.12+, stdlib only — `psi_normalize.py` also needs
+`openpyxl`, see `scripts/requirements.txt`):
 
 ```bash
 python scripts/psi_search.py --all      # PSI repository searches -> data/raw/
@@ -43,7 +44,16 @@ python scripts/build_dataset.py         # merge structured records -> src/data/
 python scripts/build_dataset.py --sample  # restore starter dataset
 ```
 
-See `docs/data-schema.md` for the record format.
+Bulk PSI datasets (fetch → normalize → catalogue into `data/psi/`):
+
+```bash
+python scripts/psi/psi_fetch.py       # resumable download of 13 investigations
+python scripts/psi/psi_catalog.py     # investigation metadata -> catalog/
+python scripts/psi/psi_normalize.py   # cleaned tables -> processed/ (openpyxl)
+```
+
+See `docs/data-schema.md` for the record format and `data/psi/README.md` for
+the PSI dataset layout.
 
 ## Architecture
 

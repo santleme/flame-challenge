@@ -16,6 +16,7 @@ exploration (Moon/Mars). See `docs/challenge-brief.md`.
 - `src/components/` — Header, StatCards, FilterBar, RankingTable, DetailPanel,
   ChartsPanel (recharts), InsightFeed
 - `scripts/` — Python data pipeline (PSI/NTRS → JSON)
+- `scripts/psi/` — bulk PSI download/normalize pipeline → `data/psi/`
 - `docs/` — challenge brief + dataset schema
 
 ## Commands (run inside WSL: `/home/lucas_coimbra/flame-challenge`)
@@ -28,6 +29,9 @@ exploration (Moon/Mars). See `docs/challenge-brief.md`.
 - `python scripts/ntrs_search.py "<query>"` — fetch NTRS citations → `data/raw/`
 - `python scripts/build_dataset.py` — merge structured raw records into dataset
 - `python scripts/build_dataset.py --sample` — restore starter dataset
+- `python scripts/psi/psi_fetch.py` — bulk-download PSI files → `data/psi/raw/`
+- `python scripts/psi/psi_catalog.py` — investigation metadata → `data/psi/catalog/`
+- `python scripts/psi/psi_normalize.py` — normalized tables → `data/psi/processed/`
 
 ## Conventions
 
