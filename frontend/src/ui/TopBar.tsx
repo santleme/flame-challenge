@@ -16,6 +16,7 @@ import {
   Users,
 } from 'lucide-react'
 import { BALANCE } from '../game/config'
+import { SCENARIOS } from '../game/scenarios'
 import type { Engine } from '../game/engine'
 import { engineOnline } from '../sim-bridge/physics'
 import { useGameVersion } from '../state/store'
@@ -85,6 +86,27 @@ export default function TopBar({ engine, onOpenMission }: { engine: Engine; onOp
         <Cpu className="h-3 w-3" />
         {physics ? 'C++' : 'local'}
       </span>
+
+      <select
+        defaultValue=""
+        onChange={(e) => {
+          if (e.target.value) engine.runPreset(e.target.value)
+          e.target.value = ''
+        }}
+        title="Load a documented NASA preset — experiment or historical incident"
+        className="rounded border border-ice/40 bg-panel2 px-1.5 py-1 font-mono text-[10px] text-ice hover:border-ice"
+      >
+        <option value="" disabled>
+          Presets…
+        </option>
+        <option value="flex-2">FLEX — Heptane Droplet</option>
+        {SCENARIOS.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+        <option value="free-shipyard">Free Shipyard</option>
+      </select>
 
       <button
         onClick={onOpenMission}

@@ -31,6 +31,8 @@ void Chamber::configure(const Config& cfg) {
         c.pressureKpa = cfg.pressureKpa;
         c.partialGravity = cfg.partialGravity;
         c.material = mat;
+        c.o2Source = (int)cfg.o2Source;
+        c.coolingApplied = cfg.coolingApplied;
         spread_.configure(c);
     }
     ignited_ = false;
@@ -42,6 +44,31 @@ double Chamber::ignitionPressure() const {
     const Material* m = risks_.get(cfg_.materialId);
     if (!m) return 0.5;
     return MaterialRisk::ignitionPressure(*m, cfg_.o2Pct);
+}
+
+RiskVector Chamber::riskVector() const {
+    const Material* m = risks_.get(cfg_.materialId);
+    if (!m) return {};
+    RiskVector rv = MaterialRisk::riskVector(*m, cfg_.o2Pct, cfg_.flowCms, mods_);
+    // regime multipliers mirror SolidSpread::nominalRate so the HUD axis
+    // agrees with what the solver actually does
+    if (cfg_.o2Source == O2SourceType::EnrichedPressure) {
+        rv.spreadVelocityMms *= 2.5;
+        rv.ignitionRisk = std::min(1.0, rv.ignitionRisk * 1.4 + 0.1);
+    } else if (cfg_.o2Source == O2SourceType::ChemicalGenerator) {
+        rv.spreadVelocityMms *= 1.4;
+        // self-oxidizing: cutting cabin O2 does not reduce toxicity load
+        rv.toxicityBuildup = std::min(1.0, rv.toxicityBuildup + 0.25);
+    }
+    return rv;
+}
+
+void Chamber::setModifiers(const TechModifiers& mods) { mods_ = mods; }
+
+void Chamber::applyCooling(bool on) {
+    cfg_.coolingApplied = on;
+    if (!useDroplet_) spread_.setCooling(on);
+    if (on) events_.push_back("cooling-applied");
 }
 
 void Chamber::step(double dtSec) {
@@ -95,7 +122,11 @@ std::vector<std::string> Chamber::drainEvents() {
 }
 
 std::string Chamber::stateJson() const {
-    char buf[640];
+    char buf[1024];
+    const RiskVector rv = riskVector();
+    const char* riskTail =
+        ",\"riskIgnition\":%.3f,\"riskSpreadMms\":%.3f,\"riskStealth\":%.3f,"
+        "\"riskToxicity\":%.3f,\"o2Source\":%d,\"o2Pct\":%.1f}";
     if (useDroplet_) {
         const auto& s = droplet_.state();
         std::snprintf(
@@ -103,11 +134,16 @@ std::string Chamber::stateJson() const {
             "{\"model\":\"droplet\",\"tSec\":%.3f,\"regime\":%d,"
             "\"dropletDMm\":%.3f,\"flameRMm\":%.3f,\"flameTempK\":%.1f,"
             "\"heatReleaseW\":%.2f,\"burnFraction\":%.3f,"
-            "\"ignited\":%s,\"coolFlame\":%s,\"finished\":%s}",
+            "\"ignited\":%s,\"coolFlame\":%s,\"finished\":%s",
             s.tSec, (int)s.regime, s.dropletDMm, s.flameRMm, s.flameTempK,
             s.heatReleaseW, s.burnFraction,
             ignited_ ? "true" : "false", coolFlame() ? "true" : "false",
             finished() ? "true" : "false");
+        const size_t n = std::strlen(buf);
+        std::snprintf(buf + n, sizeof buf - n, riskTail,
+                      rv.ignitionRisk, rv.spreadVelocityMms,
+                      rv.coolFlameStealthIndex, rv.toxicityBuildup,
+                      (int)cfg_.o2Source, cfg_.o2Pct);
     } else {
         const auto& s = spread_.state();
         std::snprintf(
@@ -115,10 +151,15 @@ std::string Chamber::stateJson() const {
             "{\"model\":\"spread\",\"tSec\":%.3f,\"regime\":%d,"
             "\"frontPosCm\":%.3f,\"spreadRateCms\":%.3f,\"burnLengthCm\":%.3f,"
             "\"intensity\":%.3f,"
-            "\"ignited\":%s,\"coolFlame\":false,\"finished\":%s}",
+            "\"ignited\":%s,\"coolFlame\":false,\"finished\":%s",
             s.tSec, (int)s.regime, s.frontPosCm, s.spreadRateCms,
             s.burnLengthCm, s.intensity,
             ignited_ ? "true" : "false", finished() ? "true" : "false");
+        const size_t n = std::strlen(buf);
+        std::snprintf(buf + n, sizeof buf - n, riskTail,
+                      rv.ignitionRisk, rv.spreadVelocityMms,
+                      rv.coolFlameStealthIndex, rv.toxicityBuildup,
+                      (int)cfg_.o2Source, cfg_.o2Pct);
     }
     return buf;
 }

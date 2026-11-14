@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.services import engine_bridge as eb
-from backend.services import rag, risk
+from backend.services import rag, risk, tactical
 
 app = FastAPI(title="Freefall Foundry Engine API", version="0.1.0")
 app.add_middleware(
@@ -36,6 +36,7 @@ class ChamberReq(BaseModel):
     o2Pct: float
     flowCms: float | None = None
     seed: int = 1
+    o2Source: int = 0  # 0 ambient / 1 enriched (Apollo 1) / 2 chem-gen (Mir)
 
 
 @app.get("/health")
@@ -105,13 +106,45 @@ def api_risk_materials() -> dict:
     return {"materials": risk.materials()}
 
 
+# ---------- Tactical copilot: module ranking + citation-anchored advice ----
+
+class ModuleTelemetry(BaseModel):
+    moduleId: str
+    materialId: str = "pmma"
+    materialName: str = ""
+    o2Pct: float = 21.0
+    flowCms: float = 0.0
+    o2Source: int = 0  # 0 ambient / 1 enriched / 2 chemical-generator
+
+
+class RankReq(BaseModel):
+    modules: list[ModuleTelemetry]
+
+
+class AdviseReq(BaseModel):
+    module: ModuleTelemetry
+
+
+@app.post("/api/risk/rank")
+def api_risk_rank(req: RankReq) -> dict:
+    """Rank all active shipyard modules by criticality + dominant factor."""
+    return tactical.rank_modules([m.model_dump() for m in req.modules])
+
+
+@app.post("/api/tactical/advise")
+def api_tactical_advise(req: AdviseReq) -> dict:
+    """Strict-JSON tactical advice anchored to psi_experiments records."""
+    return tactical.advise(req.module.model_dump())
+
+
 @app.websocket("/ws/chamber")
 async def chamber_ws(ws: WebSocket) -> None:
     """Stream a live chamber run at ~30 Hz until the run finishes or 60 s cap."""
     await ws.accept()
     try:
         req = ChamberReq(**json.loads(await ws.receive_text()))
-        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms, req.seed)
+        ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms,
+                             req.seed, req.o2Source)
         dt = 1.0 / 30.0
         deadline = time.monotonic() + 60
         while not ch.finished() and time.monotonic() < deadline:

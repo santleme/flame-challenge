@@ -24,6 +24,10 @@ class SolidSpread {
         double pressureKpa = 101.0;
         bool partialGravity = false; // lunar/Martian correction
         Material material;
+        /** oxidizer regime: 0 ambient, 1 enriched (Apollo 1), 2 chemical (Mir) */
+        int o2Source = 0;
+        /** Mir only: continuous cooling applied → self-oxidizing fire stops */
+        bool coolingApplied = false;
     };
 
     struct State {
@@ -38,6 +42,9 @@ class SolidSpread {
     void configure(const Config& cfg);
     void step(double dtSec);
     const State& state() const { return s_; }
+
+    /** Mir regime: applying continuous cooling stops a self-oxidizing fire */
+    void setCooling(bool on) { c_.coolingApplied = on; }
 
   private:
     Config c_;

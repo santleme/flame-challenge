@@ -10,7 +10,9 @@ NASA PSI data and a compiled C++ physics core. See `docs/`.
 
 - `core/` — C++20 physics: `combustion_solver` (FLEX droplet d²-law +
   cool-flame regime), `airflow_propagator` (SAFFIRE-type spread with two
-  extinction regimes), `material_risk` (ACME flammability matrix),
+  extinction regimes + `O2SourceType` historical regimes: ambient /
+  enriched Apollo-1 / self-oxidizing Mir-97), `material_risk` (ACME
+  flammability matrix + 4-axis `RiskVector` + `TechModifiers` spin-offs),
   `chamber.hpp` aggregate API. `src/bindings.cpp` → pybind11 module;
   `src/bindings_wasm.cpp` → Emscripten-ready embind.
 - `data/` — Python ETL (`pipelines/`): `psi_search.py`, `ntrs_search.py`,
@@ -20,8 +22,10 @@ NASA PSI data and a compiled C++ physics core. See `docs/`.
   (`calibration.json`, `risk_profiles.json` — the single source of truth for
   both the C++ core and the TS fallback)
 - `backend/` — `api/` FastAPI routes + `services/engine_bridge.py` pybind
-  bridge: `/health`, `/api/chamber/preview`, `/api/materials`,
-  `WS /ws/chamber` (30 Hz telemetry)
+  bridge + `services/tactical.py` copilot: `/health`, `/api/chamber/preview`,
+  `/api/materials`, `POST /api/risk/rank` (multifactor module ranking),
+  `POST /api/tactical/advise` (strict-JSON citation-anchored advice),
+  `WS /ws/chamber` (30 Hz telemetry incl. `o2Source` + risk vector)
 - `frontend/` — React + TS + PixiJS client:
   - `src/game/` — pure TS sim: engine (state/tick/actions), crew AI + jobs,
     fire system, experiments (multifactor risk from `risk_profiles.json`),

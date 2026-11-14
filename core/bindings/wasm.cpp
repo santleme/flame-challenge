@@ -20,6 +20,22 @@ EMSCRIPTEN_BINDINGS(freefall_engine) {
             return m ? MaterialRisk::ignitionPressure(*m, o2) : -1.0;
         });
 
+    value_object<RiskVector>("RiskVector")
+        .field("ignitionRisk", &RiskVector::ignitionRisk)
+        .field("spreadVelocityMms", &RiskVector::spreadVelocityMms)
+        .field("coolFlameStealthIndex", &RiskVector::coolFlameStealthIndex)
+        .field("toxicityBuildup", &RiskVector::toxicityBuildup);
+
+    value_object<TechModifiers>("TechModifiers")
+        .field("detectionLatencyMult", &TechModifiers::detectionLatencyMult)
+        .field("extinguishRateMult", &TechModifiers::extinguishRateMult)
+        .field("crewThermalMult", &TechModifiers::crewThermalMult);
+
+    enum_<O2SourceType>("O2SourceType")
+        .value("AMBIENT_CABIN", O2SourceType::AmbientCabin)
+        .value("ENRICHED_PRESSURE", O2SourceType::EnrichedPressure)
+        .value("CHEMICAL_GENERATOR", O2SourceType::ChemicalGenerator);
+
     value_object<Chamber::Config>("ChamberConfig")
         .field("investigationId", &Chamber::Config::investigationId)
         .field("materialId", &Chamber::Config::materialId)
@@ -30,7 +46,9 @@ EMSCRIPTEN_BINDINGS(freefall_engine) {
         .field("slabLengthCm", &Chamber::Config::slabLengthCm)
         .field("dropletD0Mm", &Chamber::Config::dropletD0Mm)
         .field("partialGravity", &Chamber::Config::partialGravity)
-        .field("seed", &Chamber::Config::seed);
+        .field("seed", &Chamber::Config::seed)
+        .field("o2Source", &Chamber::Config::o2Source)
+        .field("coolingApplied", &Chamber::Config::coolingApplied);
 
     class_<Chamber>("Chamber")
         .constructor<>()
@@ -38,6 +56,9 @@ EMSCRIPTEN_BINDINGS(freefall_engine) {
         .function("configure", &Chamber::configure)
         .function("step", &Chamber::step)
         .function("ignitionPressure", &Chamber::ignitionPressure)
+        .function("riskVector", &Chamber::riskVector)
+        .function("setModifiers", &Chamber::setModifiers)
+        .function("applyCooling", &Chamber::applyCooling)
         .function("regime", &Chamber::regime)
         .function("hotBurning", &Chamber::hotBurning)
         .function("coolFlame", &Chamber::coolFlame)

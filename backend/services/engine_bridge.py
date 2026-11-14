@@ -47,11 +47,47 @@ def preview(investigation_id: str, o2_pct: float, flow_cms: float | None = None)
     }
 
 
+def risk_vector(material_id: str, o2_pct: float, flow_cms: float,
+                mods: "fe.TechModifiers") -> "fe.RiskVector":
+    return _risks.risk_vector(material_id, float(o2_pct), float(flow_cms), mods)
+
+
+_SPINOFF_MAP = {  # tech id → TechModifiers field
+    "fire-detector": ("detection_latency_mult", "hiddenRevealMult"),
+    "firemans-air-tanks": ("extinguish_rate_mult", "extinguishRateMult"),
+    "fire-attire": ("crew_thermal_mult", "crewBurnMult"),
+}
+
+
+def tech_modifiers(researched: list[str] | None = None) -> "fe.TechModifiers":
+    """Translate researched spin-off ids into C++ physics modifiers.
+
+    `researched=None` → apply ALL fielded spin-offs (backend default for
+    ranking/advice, matching a shipyard that researched everything).
+    """
+    mods = fe.TechModifiers()
+    if researched is None:
+        researched = list(_SPINOFF_MAP)
+    doc_path = ROOT / "shared" / "calibrated-data" / "tech_spinoffs.json"
+    effects: dict[str, dict] = {}
+    if doc_path.exists():
+        for t in json.loads(doc_path.read_text()).get("tech", []):
+            if t.get("id") in _SPINOFF_MAP:
+                effects[t["id"]] = t.get("effects", {})
+    for tid in researched:
+        field, effect_key = _SPINOFF_MAP.get(tid, (None, None))
+        if field and effect_key in effects.get(tid, {}):
+            setattr(mods, field, float(effects[tid][effect_key]))
+    return mods
+
+
 def make_chamber(
     investigation_id: str,
     o2_pct: float,
     flow_cms: float | None = None,
     seed: int = 1,
+    o2_source: int = 0,
+    mods: "fe.TechModifiers | None" = None,
 ) -> fe.Chamber:
     spec = _cal["investigations"].get(investigation_id, {})
     cfg = fe.ChamberConfig()
@@ -64,6 +100,13 @@ def make_chamber(
     cfg.pressureKpa = float(spec.get("pressureKpa", 101))
     cfg.partialGravity = bool(spec.get("partialGravity", False))
     cfg.seed = seed
+    cfg.o2Source = {
+        0: fe.O2SourceType.AMBIENT_CABIN,
+        1: fe.O2SourceType.ENRICHED_PRESSURE,
+        2: fe.O2SourceType.CHEMICAL_GENERATOR,
+    }[int(o2_source)]
     ch = fe.Chamber(_risks)
     ch.configure(cfg)
+    if mods is not None:
+        ch.set_modifiers(mods)
     return ch

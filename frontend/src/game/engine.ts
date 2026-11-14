@@ -2,12 +2,13 @@ import { getInvestigations } from '../lib/data'
 import { BALANCE, GRID_H, GRID_W, ROOM_SPECS, mulberry32 } from './config'
 import { crewName } from './names'
 import { findPath } from './pathfind'
-import { isWalkable, igniteRoom, roomAt, updateFires } from './fire'
+import { isWalkable, igniteRoom, roomAt, updateFires, extinguishAt } from './fire'
 import { musterPoint, pathTo, roomSpot, updateCrewMember } from './crew'
 import { citation, rollsHidden, specFor } from './experiments'
 import { applyScenario, SCENARIOS } from './scenarios'
 import { buyTech as buyTechImpl } from './tech'
 import type {
+  Countermeasure,
   CrewMember,
   CrewRole,
   EventKind,
@@ -107,6 +108,7 @@ export class Engine {
       damage: 0,
       experiment: null,
       fabJob: null,
+      countermeasures: [],
       label: label ?? `${ROOM_SPECS[type].label} ${e.nextId}`,
     }
     e.rooms.push(room)
@@ -246,6 +248,59 @@ export class Engine {
     if (!ok) {
       this.notice('No active module to host the scenario')
       return false
+    }
+    this.emit()
+    return true
+  }
+
+  /** one-click historical/experimental preset from the top selector */
+  runPreset(id: string): boolean {
+    if (id === 'free-shipyard') return true // default sandbox — nothing to seed
+    // scenario presets (historical JSON) take precedence
+    if (SCENARIOS.some((s) => s.id === id)) return this.triggerScenario(id)
+    // experiment preset (e.g. 'flex-2'): auto-start in the first free
+    // combustion chamber at the investigation's mid-range atmosphere
+    const inv = invById.get(id)
+    const room = this.state.rooms.find(
+      (r) => r.type === 'combustion' && r.state === 'active' && !r.experiment,
+    )
+    if (!inv || !room) {
+      this.notice('No free combustion chamber for the preset')
+      return false
+    }
+    const [o2lo, o2hi] = inv.conditions.oxygenPct ?? [18, 24]
+    const [flo, fhi] = inv.conditions.flowCms ?? [0, 0]
+    return this.startExperiment(
+      room.id, inv.id, (o2lo + o2hi) / 2, (flo + fhi) / 2,
+    )
+  }
+
+  /** tactical countermeasure on a burning module (one-shot per kind) */
+  countermeasure(roomId: number, kind: Countermeasure): boolean {
+    const room = this.state.rooms.find((r) => r.id === roomId)
+    if (!room || room.countermeasures.includes(kind)) return false
+    const fires = [...this.state.fires.entries()].filter(([, f]) =>
+      f.dormant <= 0 && rectContains(room.rect, f.x, f.y))
+    if (!fires.length) {
+      this.notice('No active fire in that module')
+      return false
+    }
+    room.countermeasures.push(kind)
+    if (kind === 'vent-cut') {
+      if (room.experiment) room.experiment.flowCms = 0
+      for (const [, f] of fires) f.spreadRate *= 0.22
+      this.log('warn', `${room.label}: ventilation cut — opposed-flow drive removed (−78% spread).`)
+    } else if (kind === 'depressurize') {
+      if (room.experiment) room.experiment.oxygenPct = 14
+      for (const [, f] of fires) {
+        f.spreadRate *= 0.45
+        f.intensity *= 0.8
+      }
+      this.log('warn', `${room.label}: depressurizing — O₂ below LOC margin (−55% spread).`)
+    } else {
+      // suppression burst: same knock-down path as crew extinguish
+      for (const [k] of fires) extinguishAt(this.state, k, 1.5, this.rng)
+      this.log('warn', `${room.label}: localized suppression discharged (−50% intensity).`)
     }
     this.emit()
     return true

@@ -27,6 +27,36 @@ struct Material {
     bool smoldering = false;
 };
 
+/**
+ * Multifactor risk vector — the 4 axes the game decomposes into
+ * ignition / propagation / detection / persistence. Values are 0..1
+ * unless noted; computed per material+atmosphere+flow state, not
+ * per material alone.
+ */
+struct RiskVector {
+    /** ignition pressure at the atmosphere (0 at/below LOC) */
+    double ignitionRisk = 0;
+    /** expected flame spread at the atmosphere+flow, mm/s */
+    double spreadVelocityMms = 0;
+    /** chance the fire is hard to detect — cool-flame stealth */
+    double coolFlameStealthIndex = 0;
+    /** CO/soot accumulation pressure on crew (0..1) */
+    double toxicityBuildup = 0;
+};
+
+/**
+ * NASA spin-off modifiers researched by the crew. Values <1 reduce,
+ * >1 amplify the physical parameter they modulate.
+ */
+struct TechModifiers {
+    /** <1 → hidden flames breach the detection threshold sooner */
+    double detectionLatencyMult = 1.0;
+    /** >1 → extinguishing progress per tick is faster */
+    double extinguishRateMult = 1.0;
+    /** <1 → crew burn damage reduced (thermal attire) */
+    double crewThermalMult = 1.0;
+};
+
 class MaterialRisk {
   public:
     MaterialRisk();
@@ -47,6 +77,14 @@ class MaterialRisk {
     static double midSpread(const Material& m) {
         return 0.5 * (m.spreadMinCms + m.spreadMaxCms);
     }
+
+    /**
+     * 4-axis risk vector at (material, o2Pct, flowCms).
+     * `tech` scales the detection axis (spin-off detectors).
+     */
+    static RiskVector riskVector(const Material& m, double o2Pct,
+                                 double flowCms,
+                                 const TechModifiers& tech = {});
 
   private:
     std::unordered_map<std::string, Material> table_;

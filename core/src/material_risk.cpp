@@ -44,6 +44,37 @@ double MaterialRisk::ignitionPressure(const Material& m, double o2Pct) {
     return std::min(1.0, 0.04 + 0.055 * std::pow(margin, 1.35));
 }
 
+RiskVector MaterialRisk::riskVector(const Material& m, double o2Pct,
+                                    double flowCms, const TechModifiers& tech) {
+    RiskVector v;
+    v.ignitionRisk = ignitionPressure(m, o2Pct);
+
+    // propagation axis — same interpolation the SolidSpread solver uses:
+    // mid-range rate scaled by O₂ margin then boosted by forced flow
+    // (SAFFIRE opposed-flow enhancement), converted to mm/s for the UI.
+    const double margin = std::max(0.0, o2Pct - m.locPct);
+    const double span = std::max(0.01, m.spreadMaxCms - m.spreadMinCms);
+    const double o2Frac = std::clamp(margin / 25.0, 0.0, 1.0);
+    double rate = m.spreadMinCms + span * std::pow(o2Frac, 0.8);
+    rate *= 1.0 + std::clamp(flowCms / 20.0, 0.0, 1.5);
+    v.spreadVelocityMms = rate * 10.0;
+
+    // detection axis — FLEX cool flames and detection-gap materials
+    // hide combustion from crew/alarms; detectors shrink it.
+    const double detectBase =
+        0.1 + (m.coolFlameCapable ? 0.6 : 0.0) + (m.smoldering ? 0.15 : 0.0);
+    v.coolFlameStealthIndex =
+        std::clamp(detectBase * tech.detectionLatencyMult, 0.0, 1.0);
+
+    // persistence/toxicity axis — soot index drives CO/aerosol load;
+    // smoldering extends the re-ignition window after knock-down.
+    const double persistence =
+        0.1 + (m.smoldering ? 0.55 : 0.0) +
+        (m.locPct < 14.0 ? 0.2 : 0.0); // low-LOC fuels persist at low O₂
+    v.toxicityBuildup = std::clamp(m.sootIndex * 0.5 + persistence * 0.5, 0.0, 1.0);
+    return v;
+}
+
 // ---- minimal JSON reader (no external deps) ----
 // expects: {"materials":[{...},...]} with flat scalar fields.
 // Only tolerant parsing needed for our own calibration output.
