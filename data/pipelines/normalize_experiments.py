@@ -887,7 +887,7 @@ def write_structured(rows: list[dict]) -> None:
         # a rig that mostly ran quiescent but pushed a few 2.55 cm/s
         # points has a [0, 2.55] envelope, not a degenerate single point
         flows = ([float(r["flow_cms"] or 0.0) for r in rs]
-                 if any(r.get("flow_cms") for r in rs) else [])
+                 if any(r.get("flow_cms") is not None for r in rs) else [])
         exts = [float(r["o2_pct"]) for r in rs
                 if r.get("o2_pct") and r.get("outcome") == "extinction"]
         n_cool = sum(str(r.get("cool_flame")).lower() == "true" for r in rs)

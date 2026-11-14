@@ -217,10 +217,12 @@ async def chamber_ws(ws: WebSocket) -> None:
                 detail = {"detail": "Invalid request body",
                           "type": "request_validation"}
             await ws.send_text(json.dumps({"error": detail}))
+            await ws.close(code=1008)  # policy violation — clean reject
             return
         except (json.JSONDecodeError, TypeError):
             await ws.send_text(
                 json.dumps({"error": "expected a JSON object request"}))
+            await ws.close(code=1008)
             return
         ch = eb.make_chamber(req.investigationId, req.o2Pct, req.flowCms,
                              req.seed, req.pressureKpa)
