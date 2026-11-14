@@ -1,10 +1,11 @@
-import { Activity, FlaskConical, Hammer, HeartPulse, Wrench, X } from 'lucide-react'
+import { Activity, FlaskConical, Flame, Hammer, HeartPulse, ShieldAlert, Wind, Wrench, X, Zap } from 'lucide-react'
 import { BALANCE, ROOM_SPECS } from '../game/config'
 import type { Engine } from '../game/engine'
 import { invById } from '../game/engine'
 import { useGameVersion } from '../state/store'
 import type { Selection } from '../renderer/WorldView'
-import type { CrewMember, Room } from '../game/types'
+import { COUNTERMEASURE_PREVIEW, rectContains } from '../game/types'
+import type { Countermeasure, CrewMember, Room } from '../game/types'
 
 interface Props {
   engine: Engine
@@ -123,12 +124,71 @@ function RoomInfo({
           <Wrench className="h-3.5 w-3.5" /> Offline — engineers will auto-repair.
         </div>
       )}
+
+      <TacticalPlaybook engine={engine} room={room} />
       {room.type === 'quarters' && <p className="text-[10px] text-mist">Crew resting here recovers stamina and heals.</p>}
       {room.type === 'lab' && room.state === 'active' && (
         <p className="text-[10px] text-mist">Idle scientists analyze data here (+science trickle).</p>
       )}
       {room.type === 'dock' && <p className="text-[10px] text-mist">Arrivals and supply ships use this arm.</p>}
     </>
+  )
+}
+
+/** Tactical playbook — 3 countermeasure buttons with predicted impact,
+ *  shown when the inspected module has live fires. */
+function TacticalPlaybook({ engine, room }: { engine: Engine; room: Room }) {
+  const st = engine.state
+  const fires = [...st.fires.values()].filter(
+    (f) => f.dormant <= 0 && rectContains(room.rect, f.x, f.y),
+  )
+  if (!fires.length) return null
+  const hidden = fires.some((f) => f.hidden)
+  const selfOx = fires.some((f) => f.selfOxidizing)
+
+  const buttons: { kind: Countermeasure; icon: typeof Wind }[] = [
+    { kind: 'vent-cut', icon: Wind },
+    { kind: 'depressurize', icon: ShieldAlert },
+    { kind: 'suppression', icon: Zap },
+  ]
+
+  return (
+    <div className="rounded border border-red-500/40 bg-red-500/10 p-2">
+      <div className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-red-300">
+        <Flame className="h-3 w-3" /> Fire response — {fires.length} tile{fires.length > 1 ? 's' : ''}
+      </div>
+      {hidden && (
+        <p className="mb-1 text-[9px] text-violet-300">
+          Cool flame suspected — invisible to the naked eye (FLEX regime). Use sensors, not visuals.
+        </p>
+      )}
+      {selfOx && (
+        <p className="mb-1 text-[9px] text-ember">
+          Self-oxidizing fire (Mir-1997 type) — vent/O₂ cuts won't starve it; knock-down re-ignites.
+        </p>
+      )}
+      <div className="space-y-1">
+        {buttons.map(({ kind, icon: Icon }) => {
+          const used = room.countermeasures.includes(kind)
+          const p = COUNTERMEASURE_PREVIEW[kind]
+          const ineffective = selfOx && kind !== 'suppression'
+          return (
+            <button
+              key={kind}
+              onClick={() => engine.countermeasure(room.id, kind)}
+              disabled={used}
+              className="flex w-full items-center gap-1.5 rounded bg-panel/80 px-1.5 py-1 text-left text-[10px] font-medium text-white hover:bg-edge disabled:opacity-40"
+            >
+              <Icon className="h-3 w-3 shrink-0 text-ember" />
+              <span className="flex-1">{p.desc.split('—')[0].trim()}</span>
+              <span className={`font-mono text-[9px] ${ineffective ? 'text-red-400' : 'text-emerald-400'}`}>
+                {used ? 'applied' : ineffective ? 'ineffective' : `−${p.deltaPct}%`}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

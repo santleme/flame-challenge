@@ -235,6 +235,51 @@ export function createWorld(app: Application, engine: Engine, ui: WorldUI): Worl
 
     // ---------- fx layer: hover, ghost, selection, progress bars ----------
     fx.clear()
+
+    // airflow streamlines: animated chevrons through rooms whose
+    // experiment has forced flow on; cyan → orange when the flow is
+    // feeding a live flame (SAFFIRE opposed-flow driver)
+    for (const room of st.rooms) {
+      if (room.state !== 'active' || room.type === 'deck') continue
+      const flow = room.experiment?.flowCms ?? 0
+      if (flow <= 0) continue
+      const onFire = [...st.fires.values()].some(
+        (f) => f.dormant <= 0 && rectContains(room.rect, f.x, f.y),
+      )
+      const col = onFire ? 0xff9a3c : 0x38bdf8
+      const rows = Math.max(1, Math.floor(room.rect.h / 2))
+      for (let row = 0; row < rows; row++) {
+        const y = room.rect.y + (room.rect.h * (row + 0.5)) / rows
+        // chevrons drift along +x with time → perceived airflow direction
+        const phase = ((t * (0.25 + flow / 60)) % 1)
+        for (let i = 0; i < 3; i++) {
+          const fx0 = room.rect.x + ((i / 3 + phase) % 1) * room.rect.w
+          const p = isoToScreen(fx0, y - 0.5)
+          fx.moveTo(p.x - 6, p.y - 3)
+            .lineTo(p.x + 4, p.y)
+            .lineTo(p.x - 6, p.y + 3)
+            .stroke({ width: 2, color: col, alpha: 0.55 })
+        }
+      }
+    }
+
+    // cool-flame warning: pulsing blue-violet halo + thermal alert glyph —
+    // the naked eye wouldn't see it (FLEX cool-flame regime)
+    for (const f of st.fires.values()) {
+      if (!f.hidden || f.dormant > 0) continue
+      const p = isoToScreen(f.x, f.y)
+      const pulse = 0.25 + 0.15 * Math.sin(t * 3.5 + f.x + f.y)
+      fx.circle(p.x, p.y - 6, 16 + f.intensity * 14)
+        .fill({ color: 0x8b7cf6, alpha: pulse })
+      // thermal warning triangle
+      const ty = p.y - 34
+      fx.poly([p.x, ty, p.x + 7, ty + 12, p.x - 7, ty + 12])
+        .fill({ color: 0x8b7cf6, alpha: 0.85 })
+        .stroke({ width: 1, color: 0xc4b5fd, alpha: 0.9 })
+      fx.rect(p.x - 1, ty + 3.5, 2, 5).fill({ color: 0x0b1020, alpha: 1 })
+      fx.circle(p.x, ty + 10, 1.2).fill({ color: 0x0b1020, alpha: 1 })
+    }
+
     if (ui.hover && !ui.ghost) {
       const p = isoToScreen(ui.hover.x, ui.hover.y)
       fx.poly([p.x, p.y - TILE_H / 2, p.x + 32, p.y, p.x, p.y + TILE_H / 2, p.x - 32, p.y]).stroke({ width: 1.5, color: 0x67e8f9, alpha: 0.8 })

@@ -35,6 +35,17 @@ export interface Room {
   /** fabrication run in progress (seconds remaining) */
   fabJob: { remaining: number } | null
   label: string
+  /** tactical countermeasures already applied (one-shot each) */
+  countermeasures: Countermeasure[]
+}
+
+export type Countermeasure = 'vent-cut' | 'depressurize' | 'suppression'
+
+/** predicted propagation-rate reduction for the tactical HUD preview */
+export const COUNTERMEASURE_PREVIEW: Record<Countermeasure, { deltaPct: number; desc: string }> = {
+  'vent-cut': { deltaPct: 78, desc: 'Cut Ventilation — starves opposed-flow spread' },
+  'depressurize': { deltaPct: 55, desc: 'Reduce O₂ / Depressurize — drops below LOC margin' },
+  'suppression': { deltaPct: 50, desc: 'Localized Suppression — instant intensity knockdown' },
 }
 
 export type CrewRole = 'scientist' | 'engineer'
