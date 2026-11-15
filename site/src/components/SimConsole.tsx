@@ -66,9 +66,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       })
     window.addEventListener('ignis:chamber-complete', onDone)
     window.addEventListener('ignis:chamber-offline', onDone)
+    window.addEventListener('ignis:chamber-command-error', onDone)
     return () => {
       window.removeEventListener('ignis:chamber-complete', onDone)
       window.removeEventListener('ignis:chamber-offline', onDone)
+      window.removeEventListener('ignis:chamber-command-error', onDone)
     }
   }, [])
 
@@ -152,12 +154,36 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     ms: null,
   })
 
-  // deterministic preset chips — the selection path the envelopes lost
+  // deterministic preset chips — the selection path the envelopes lost.
+  // A chip also inserts a run-bearing turn so a SimRunCard mounts a
+  // LiveChamber even in an empty conversation (emit first: the lazy
+  // mount peeks the pending command, same ordering as applyResponse).
+  const [pickedPresetId, setPickedPresetId] = useState<string | null>(null)
   const pickPreset = (preset: SimPreset) => {
     const sim = presetToCommands(preset)
     const nextChamber = mergeChamberState(chamberRef.current, sim)
     setChamber(nextChamber)
+    setPickedPresetId(preset.id)
+    const { tools, run } = toolCallsFromCommands(sim)
     emitSimulationCommands(sim, 'sim-console', preset.investigationId ?? null)
+    setMsgs((ms) => [
+      ...ms,
+      {
+        kind: 'agent',
+        id: nid(),
+        pending: false,
+        tools,
+        briefing: preset.description,
+        action: null,
+        run,
+        mode: 'preset',
+        model: null,
+        engine: null,
+        riskIndex: null,
+        evidence: [],
+        ms: null,
+      },
+    ])
   }
 
   const sendText = async (text: string) => {
@@ -268,7 +294,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           className="mx-auto flex w-full max-w-3xl gap-2 overflow-x-auto pb-1 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {presets.slice(0, 8).map((p) => {
-            const isActive = chamber.investigationId === p.investigationId
+            const isActive = pickedPresetId === p.id
             return (
               <button
                 key={p.id}
