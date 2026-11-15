@@ -403,6 +403,31 @@ button.pill:active { transform: translateY(0) scale(.96); }
   box-shadow: 0 5px 16px rgb(73 184 214 / .18), inset 0 1px 0 rgb(255 255 255 / .06);
 }
 
+/* ---- dataset filter row — chips resize with the row itself (container
+   query): font, padding, height and gap track cqw so all themes stay on
+   a single line at any width; extra space is shared evenly so the row
+   reads like one segmented control. Below readable sizes the row scrolls
+   sideways instead of ever wrapping to a second line. ---- */
+.dataset-filters {
+  container-type: inline-size;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: clamp(3px, .7cqw, .5rem);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dataset-filters::-webkit-scrollbar { display: none; }
+.dataset-filters .chip {
+  flex: 1 0 auto;
+  justify-content: center;
+  min-height: clamp(34px, 5.4cqw, 56px);
+  padding: clamp(.4rem, .75cqw, .82rem) clamp(.45rem, 1.6cqw, 1.35rem);
+  font-size: clamp(8px, 1.4cqw, 15.5px);
+}
+@supports not (container-type: inline-size) {
+  .dataset-filters { flex-wrap: wrap; gap: .5rem; overflow-x: visible; }
+}
+
 .hero-shade {
   background:
     radial-gradient(ellipse at 50% 48%, #fff0 0%, transparent 58%),
