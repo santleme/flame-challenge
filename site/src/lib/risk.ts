@@ -79,6 +79,7 @@ const GRAVITY_FACTOR: Record<string, number> = {
   microgravity: 1.0,
   lunar: 0.92,
   martian: 0.95,
+  mars: 0.95, // preset vocabulary spells it "mars" — same gravity
   'partial-gravity': 0.94,
   earth: 0.85,
 }

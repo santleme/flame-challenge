@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { gsap } from '../lib/scroll'
 import { emitUiCommand } from '../lib/simBus'
+import { GRAVITY_G } from '../lib/simConsole'
 import { riskCurveLocal, riskIndexLocal, riskLevel } from '../lib/risk'
 import { attachSmoothScroll } from '../lib/smoothOverlay'
 import KeyedFlame from './KeyedFlame'
@@ -152,8 +153,6 @@ const MISSION_PRESETS: MissionPreset[] = [
   },
 ]
 
-const GRAVITY_G = { microgravity: 0, earth: 1, lunar: 0.17, mars: 0.38 } as const
-
 const O2_MIN = 8
 const O2_MAX = 40
 
@@ -161,16 +160,24 @@ const O2_MAX = 40
  *  by the same fitted model the engine uses, so it works fully offline.
  *  The dot marks where this mission actually sits on the curve. */
 function RiskSpark({ preset }: { preset: MissionPreset }) {
-  const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 1)
-  const path = pts
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${(((p.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100).toFixed(1)},${(34 - p.riskIndex * 30).toFixed(1)}`)
-    .join(' ')
-  const dx = ((preset.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100
-  const dy = 34 - riskIndexLocal(preset.materialId, preset.o2Pct, preset.flowCms, preset.gravity).riskIndex * 30
+  const { path, cx, cy } = useMemo(() => {
+    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 1)
+    const path = pts
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${(((p.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100).toFixed(1)},${(34 - p.riskIndex * 30).toFixed(1)}`)
+      .join(' ')
+    const spot = pts.find((pt) => Math.abs(pt.o2Pct - preset.o2Pct) < 1e-9)
+      ?? riskIndexLocal(preset.materialId, preset.o2Pct, preset.flowCms, preset.gravity)
+    const pad = 2.6 + 1.2 / 2 // dot radius + half stroke — keep it inside the box
+    return {
+      path,
+      cx: Math.min(100 - pad, Math.max(pad, ((preset.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100)),
+      cy: Math.min(36 - pad, Math.max(pad, 34 - spot.riskIndex * 30)),
+    }
+  }, [preset])
   return (
     <svg viewBox="0 0 100 36" aria-hidden="true" className="mt-4 block h-9 w-full overflow-visible">
       <path d={path} fill="none" stroke={preset.accent} strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
-      <circle cx={dx} cy={dy} r="2.6" fill={preset.accent} stroke="var(--bg)" strokeWidth="1.2" />
+      <circle cx={cx} cy={cy} r="2.6" fill={preset.accent} stroke="var(--bg)" strokeWidth="1.2" />
     </svg>
   )
 }
@@ -184,36 +191,53 @@ function RiskCompare({ presets, activeId }: { presets: MissionPreset[]; activeId
   const H = 150
   const x = (o2: number) => ((o2 - O2_MIN) / (O2_MAX - O2_MIN)) * W
   const y = (r: number) => H - 8 - r * (H - 20)
+  // sweep each preset once — hover/active styling must not recompute the model
+  const curves = useMemo(
+    () =>
+      presets.map((p) => {
+        const pts = riskCurveLocal(p.materialId, p.flowCms, p.gravity, O2_MIN, O2_MAX, 0.5)
+        const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${x(pt.o2Pct).toFixed(1)},${y(pt.riskIndex).toFixed(1)}`).join(' ')
+        const spot = pts.find((pt) => Math.abs(pt.o2Pct - p.o2Pct) < 1e-9)
+          ?? riskIndexLocal(p.materialId, p.o2Pct, p.flowCms, p.gravity)
+        return { id: p.id, accent: p.accent, name: splitTitle(p).name, d, cx: x(p.o2Pct), cy: y(spot.riskIndex), risk: spot.riskIndex }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [presets],
+  )
+  // active curve draws last so it sits on top of the pile
+  const ordered = activeId
+    ? [...curves.filter((c) => c.id !== activeId), ...curves.filter((c) => c.id === activeId)]
+    : curves
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       role="img"
       aria-label="Risk versus oxygen percentage, one curve per mission"
-      className="block h-auto w-full"
+      className="block h-auto w-full overflow-visible"
     >
       {[0.25, 0.5, 0.75].map((g) => (
         <line key={g} x1={0} x2={W} y1={y(g)} y2={y(g)} stroke="var(--ink)" strokeOpacity="0.08" strokeDasharray="3 5" />
       ))}
-      {presets.map((p) => {
-        const pts = riskCurveLocal(p.materialId, p.flowCms, p.gravity, O2_MIN, O2_MAX, 0.5)
-        const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${x(pt.o2Pct).toFixed(1)},${y(pt.riskIndex).toFixed(1)}`).join(' ')
-        const spot = riskIndexLocal(p.materialId, p.o2Pct, p.flowCms, p.gravity)
-        const dim = hover != null && hover !== p.id
+      {ordered.map((c) => {
+        const isActive = c.id === activeId
+        const dim = hover != null && hover !== c.id
         return (
           <g
-            key={p.id}
-            opacity={dim ? 0.18 : 0.9}
-            style={{ transition: 'opacity 200ms' }}
-            onPointerEnter={() => setHover(p.id)}
+            key={c.id}
+            opacity={dim ? 0.18 : isActive ? 1 : 0.6}
+            pointerEvents="all"
+            style={{ transition: 'opacity 200ms', cursor: 'pointer' }}
+            onPointerEnter={() => setHover(c.id)}
             onPointerLeave={() => setHover(null)}
           >
-            <path d={d} fill="none" stroke={p.accent} strokeWidth={p.id === activeId ? 3 : 1.8} strokeLinecap="round" />
-            <circle cx={x(p.o2Pct)} cy={y(spot.riskIndex)} r={p.id === activeId ? 5 : 3.4} fill={p.accent} stroke="var(--bg)" strokeWidth="1.4" />
+            <title>{`${c.name}: ${Math.round(c.risk * 100)}% risk`}</title>
+            <path d={c.d} fill="none" stroke={c.accent} strokeWidth={isActive ? 3 : 1.8} strokeLinecap="round" />
+            <circle cx={c.cx} cy={c.cy} r={isActive ? 5 : 3.4} fill={c.accent} stroke="var(--bg)" strokeWidth="1.4" />
           </g>
         )
       })}
       {[10, 21, 34].map((o2) => (
-        <text key={o2} x={x(o2)} y={H - 0} fontSize="9" fill="var(--ink)" fillOpacity="0.45" textAnchor="middle" fontFamily="var(--font-mono, monospace)">
+        <text key={o2} x={x(o2)} y={H - 4} fontSize="9" fill="var(--ink)" fillOpacity="0.45" textAnchor="middle" fontFamily="var(--font-mono, monospace)">
           {o2}%
         </text>
       ))}
@@ -356,6 +380,7 @@ export default function SimDeck() {
       set_gravity_g: GRAVITY_G[preset.gravity],
       trigger_containment: null,
       __investigation: preset.investigationId,
+      __presetId: preset.id,
       __origin: 'sim-deck',
       __run: false,
     })
