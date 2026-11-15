@@ -246,6 +246,7 @@ export default function Composer({
             onKeyUp={(event) => {
               if (event.key === ' ' || event.key === 'Enter') stopRecording()
             }}
+            onBlur={stopRecording}
             className={`flex h-11 w-11 flex-none touch-none items-center justify-center rounded-full transition-[background-color,color,transform] duration-150 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 ${
               recording || startingRecording
                 ? 'bg-red-500/12 text-red-600 dark:text-red-300'

@@ -127,7 +127,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               mode: res.mode,
               model: res.model,
               engine: res.engine ?? null,
-              riskIndex: typeof res.chamber?.riskIndex === 'number' ? res.chamber.riskIndex : null,
+              riskIndex: typeof res.chamber?.riskIndex === 'number' && !Number.isNaN(res.chamber.riskIndex) ? res.chamber.riskIndex : null,
               evidence: res.evidence ?? [],
               ms,
             }
@@ -295,7 +295,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           onVoice={sendVoice}
           disabled={busy}
           flameDefaults={{
-            gravityG: chamber.gravity === 'earth' ? 1 : chamber.gravity === 'lunar' ? 0.16 : chamber.gravity === 'mars' ? 0.38 : 0,
+            gravityG: GRAVITY_G[chamber.gravity] ?? 0,
             o2Pct: chamber.o2Pct,
             airflowCms: chamber.flowCms ?? 0.5,
             coolFlame: false,

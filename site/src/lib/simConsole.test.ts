@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SiChamberState } from './api'
 import type { ChamberState } from './live'
 import {
+  GRAVITY_G,
   mergeChamberState,
   presetToCommands,
   runOutcome,
@@ -140,6 +141,10 @@ describe('presetToCommands', () => {
       presetToCommands({ investigationId: 'x', o2Pct: 21, flowCms: 1, gravity: 'mars' })
         .set_gravity_g,
     ).toBe(0.38)
+    expect(
+      presetToCommands({ investigationId: 'x', o2Pct: 21, flowCms: 1, gravity: 'martian' })
+        .set_gravity_g,
+    ).toBe(0.38)
   })
 })
 
@@ -212,5 +217,20 @@ describe('sequential follow-up command retention', () => {
     expect(turn3.o2Pct).toBe(11.5)
     expect(turn3.flowCms).toBe(0)
     expect(turn3.sealed).toBe(true)
+
+    // Turn 4: setting martian gravity and ensuring follow-up commands retain 0.38g
+    const turn4 = mergeChamberState(turn3, {
+      set_gravity_g: 0.38,
+    })
+    expect(turn4.gravity).toBe('martian')
+    expect(GRAVITY_G[turn4.gravity]).toBe(0.38)
+
+    // Turn 5: follow-up command modifying only oxygen retains martian gravity
+    const turn5 = mergeChamberState(turn4, {
+      set_o2_percent: 25,
+    })
+    expect(turn5.gravity).toBe('martian')
+    expect(GRAVITY_G[turn5.gravity]).toBe(0.38)
+    expect(turn5.o2Pct).toBe(25)
   })
 })

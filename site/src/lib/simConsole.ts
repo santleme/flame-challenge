@@ -68,6 +68,7 @@ export const GRAVITY_G: Record<string, number> = {
   microgravity: 0,
   lunar: 0.17,
   mars: 0.38,
+  martian: 0.38,
   earth: 1,
 }
 
