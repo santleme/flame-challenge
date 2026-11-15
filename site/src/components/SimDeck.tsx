@@ -539,13 +539,18 @@ export default function SimDeck() {
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {MISSION_PRESETS.map((preset) => {
-              const r = riskIndexLocal(
-                preset.materialId,
-                preset.o2Pct,
-                preset.flowCms,
-                preset.gravity,
-              )
+            {[...MISSION_PRESETS]
+              .map((preset) => ({
+                preset,
+                risk: riskIndexLocal(
+                  preset.materialId,
+                  preset.o2Pct,
+                  preset.flowCms,
+                  preset.gravity,
+                ),
+              }))
+              .sort((a, b) => b.risk.riskIndex - a.risk.riskIndex)
+              .map(({ preset, risk: r }) => {
               const pct = Math.round(r.riskIndex * 100)
               const isActive = activeMission.id === preset.id
               return (
