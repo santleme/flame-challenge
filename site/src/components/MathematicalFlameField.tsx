@@ -105,7 +105,7 @@ function fbm(x: number, y: number) {
  * Flame sheath conformal to the typing bar: per-pixel we evaluate
  * d = sdRoundedBox(p + warp(p, t), barSize, radius) — the warp is animated
  * curl-FBM — and map the signed distance to a thermal ramp. The canvas is
- * a 36px margin around the pill and sits *behind* it, so the inner band
+ * a 56px margin around the pill and sits *behind* it, so the inner band
  * (d < 0) reads as an inset glow through the translucent white surface.
  */
 export default function MathematicalFlameField({
@@ -193,6 +193,17 @@ export default function MathematicalFlameField({
         }
       })
       observer.observe(canvas)
+    }
+
+    // React to a live prefers-reduced-motion toggle: restart or freeze.
+    const onMotionChange = () => {
+      if (!reducedMotion.matches && visible) {
+        cancelAnimationFrame(raf)
+        raf = requestAnimationFrame(draw)
+      }
+    }
+    if ('addEventListener' in reducedMotion) {
+      reducedMotion.addEventListener('change', onMotionChange)
     }
 
     const resize = () => {
@@ -309,8 +320,8 @@ export default function MathematicalFlameField({
       pointer.vy *= decay
       const pointerSpeed = Math.hypot(pointer.vx, pointer.vy)
       const pointerNear =
+        hasBar &&
         pointer.proximity > 0 &&
-        pointer.x > -999 &&
         pointer.x > bar.l - 40 &&
         pointer.x < bar.l + bar.w + 40 &&
         pointer.y > bar.t - 40 &&
@@ -340,8 +351,8 @@ export default function MathematicalFlameField({
         }
       }
 
-      const warpScale = 0.055
-      const tongueBase = 20 * (1 - micro * 0.55) + cool * 6 // tongue reach, px
+      const warpScale = 0.045
+      const tongueBase = 30 * (1 - micro * 0.55) + cool * 8 // tongue reach, px
       let edgeHeat = 0
       let edgeN = 0
 
@@ -358,7 +369,7 @@ export default function MathematicalFlameField({
             (fbm(px * warpScale - simTime * 0.42 + 40.2, py * warpScale + simTime * 0.66) - 0.5) * 2
           const md = Math.hypot(px - pointer.x, py - pointer.y)
           const mouseG = pointerNear ? Math.exp(-(md * md) / (2 * 68 * 68)) : 0
-          const warpAmp = (5 + 9 * mouseG) * (1 - micro * 0.4)
+          const warpAmp = (10 + 10 * mouseG) * (1 - micro * 0.4)
           wx *= warpAmp
           wy *= warpAmp
           // Cursor attraction: displace the domain toward the pointer so the
@@ -368,19 +379,28 @@ export default function MathematicalFlameField({
             wx += (pointer.x - px) * inv * mouseG * 7
             wy += (pointer.y - py) * inv * mouseG * 7
           }
-          let d = sdBar(px + wx, py + wy)
+          // Forced convection leans the whole sheath sideways.
+          wx += active.airflowCms * 0.08 * (1 - micro * 0.4)
 
           // Perimeter coordinate (angle) + outward normal estimate.
           const nx = px - bar.cx
           const ny = (py - bar.cy) * 1.9
           const ang = Math.atan2(ny, nx)
           const topness = 0.5 + 0.5 * -Math.sin(ang) // 1 at top, 0 at bottom
+          // Patchy sectors + upward drift: breaks the rigid rect silhouette —
+          // some arcs burn tall, others stay quiet, and 1g heat lifts off top.
+          const sector = fbm(ang * 1.35 + 4.1, simTime * 0.22)
+          const buoyantLift = (1 - micro) * topness * (5 + 9 * sector)
+          const d = sdBar(px + wx, py + wy - buoyantLift)
+
           // Organic tongues licking along the rim; stronger on top in 1g.
           const tongueN = fbm(ang * 2.4 + simTime * 1.15, d * 0.05 - simTime * 0.8)
-          const tongueBias = micro > 0.5 ? 0.55 : 0.35 + 0.65 * topness
+          const tongueBias =
+            (micro > 0.5 ? 0.55 : 0.3 + 0.7 * topness) * (0.15 + 1.35 * sector)
           const thickness =
-            (6 + tongueBase * tongueN * tongueBias) * o2Gain + mouseG * 14 * (1 - micro * 0.5)
-          d -= Math.max(0, tongueN - 0.45) * thickness
+            (4 + tongueBase * tongueN * tongueN * tongueBias) * o2Gain +
+            mouseG * 14 * (1 - micro * 0.5)
+          const dd = d - Math.max(0, tongueN - 0.38) * thickness
 
           // Keystroke waves propagating around the rim from the caret angle.
           let wave = 0
@@ -395,19 +415,19 @@ export default function MathematicalFlameField({
             wave += p.power * Math.exp(-age * 1.4) * (w1 * 0.8 + w0)
           }
 
-          const sheath = Math.exp(-(d * d) / (2 * 13 * 13)) // main body |d|<~26
-          const contact = Math.exp(-(d * d) / (2 * 4.5 * 4.5)) // white-hot rim
+          const sheath = Math.exp(-(dd * dd) / (2 * 15 * 15)) // main body
+          const contact = Math.exp(-(dd * dd) / (2 * 4 * 4)) // white-hot rim
           const inset = d < 0 ? Math.exp(-((d + 7) * (d + 7)) / (2 * 5 * 5)) : 0
           const flicker = 0.8 + 0.2 * Math.sin(simTime * (cool > 0.5 ? 5.2 : 8.4) + ang * 5)
           let heat = (sheath * 0.85 + contact * 0.6 + wave * 0.9) * flicker * o2Gain
           heat = Math.min(1.4, heat)
 
-          if (d > -2 && d < 14) {
+          if (dd > -2 && dd < 14) {
             edgeHeat += heat
             edgeN++
           }
 
-          const u = Math.max(0, Math.min(1, d / 26)) // 0 rim → 1 outer tip
+          const u = Math.max(0, Math.min(1, dd / 34)) // 0 rim → 1 outer tip
           let r = 0
           let g = 0
           let b = 0
@@ -427,15 +447,17 @@ export default function MathematicalFlameField({
           } else {
             // contact → amber/white, body → orange, tip → crimson fading out
             const cb = Math.min(1, contact + wave * 0.5)
-            r = 153 + (254 - 153) * Math.pow(1 - u, 2.2)
-            g = 27 + (240 - 27) * Math.pow(1 - u, 2.6)
-            b = 27 + (138 - 27) * Math.pow(1 - u, 3.4)
-            if (u < 0.55) {
-              const f = u / 0.55
-              r = 249 - 15 * f + (254 - 249) * cb
-              g = 115 - 60 * f + (240 - 115) * cb
-              b = 22 + 16 * f + (138 - 22) * cb
-            }
+            const f = Math.min(1, u / 0.55)
+            const innerR = 249 - 15 * f + (254 - 249) * cb
+            const innerG = 115 - 60 * f + (240 - 115) * cb
+            const innerB = 22 + 16 * f + (138 - 22) * cb
+            const outerR = 153 + (254 - 153) * Math.pow(1 - u, 2.2)
+            const outerG = 27 + (240 - 27) * Math.pow(1 - u, 2.6)
+            const outerB = 27 + (138 - 27) * Math.pow(1 - u, 3.4)
+            const blend = smooth(0.35, 0.65, u)
+            r = innerR + (outerR - innerR) * blend
+            g = innerG + (outerG - innerG) * blend
+            b = innerB + (outerB - innerB) * blend
             alpha = Math.min(245, heat * 200 + contact * 90 + inset * 90)
           }
           // Inset glow bleeding through the translucent pill.
@@ -492,6 +514,9 @@ export default function MathematicalFlameField({
       cancelAnimationFrame(raf)
       observer?.disconnect()
       resizeObserver?.disconnect()
+      if ('removeEventListener' in reducedMotion) {
+        reducedMotion.removeEventListener('change', onMotionChange)
+      }
       if (typeof window !== 'undefined') {
         window.removeEventListener('pointermove', onPointer)
       }
