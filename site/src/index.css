@@ -60,6 +60,11 @@ body {
 }
 @keyframes cursor-blink { 50% { opacity: 0; } }
 .clock-blink { animation: cursor-blink 1s steps(1, end) infinite; }
+@keyframes loc-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  55% { box-shadow: 0 0 0 4px transparent; }
+}
+.loc-dot { animation: loc-pulse 2.6s ease-in-out infinite; }
 @keyframes reveal-surfaces { from { opacity: 0; } to { opacity: .85; } }
 .caret-blink { animation: cursor-blink .7s steps(1, end) infinite; }
 @keyframes ship-drift {
@@ -326,9 +331,9 @@ button.pill:active { transform: translateY(0) scale(.96); }
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.header-theme-toggle { min-height: 50px; padding-inline: 1.1rem; }
+.header-theme-toggle { min-height: 44px; padding-inline: .9rem; }
 .nav-glass-link {
-  min-height: 50px;
+  min-height: 44px;
   border: 1px solid color-mix(in srgb, white 72%, var(--accent) 12%);
   background: linear-gradient(180deg, rgb(255 255 255 / .5), rgb(255 255 255 / .17));
   box-shadow: 0 5px 14px rgb(23 33 43 / .08), inset 0 1.5px 0 rgb(255 255 255 / .85), inset 0 -1px 0 rgb(23 33 43 / .06);
@@ -410,6 +415,6 @@ button.pill:active { transform: translateY(0) scale(.96); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .caret, .caret-blink, .clock-blink, .ship-drift, .rise-in { animation: none; }
+  .caret, .caret-blink, .clock-blink, .ship-drift, .rise-in, .loc-dot { animation: none; }
   .heat-surface { animation: none; opacity: .85; }
 }

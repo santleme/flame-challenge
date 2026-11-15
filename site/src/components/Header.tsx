@@ -99,7 +99,7 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
 
   return (
     <header className="fixed inset-x-0 top-0 z-20 px-3 py-4 sm:px-8 sm:py-6">
-      <div className="relative mx-auto flex w-fit max-w-full items-center justify-center gap-2 px-2.5 py-2 sm:gap-6 sm:px-5 sm:py-2.5">
+      <div className="relative mx-auto flex w-fit max-w-full items-center justify-center gap-3 px-3.5 py-2.5 sm:gap-7 sm:px-7 sm:py-3.5">
         <span
           ref={glassRef}
           aria-hidden="true"
@@ -115,7 +115,7 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
                   e.preventDefault()
                   go(item.href)
                 }}
-                className={`nav-glass-link group relative inline-flex min-h-12 items-center whitespace-nowrap rounded-full px-4 font-mono text-[clamp(14px,1.15vw,16px)] font-semibold lowercase tracking-[0.06em] text-[var(--ink)] transition-[background,box-shadow,transform,color] duration-300 hover:-translate-y-px ${item.className ?? ''}`}
+                className={`nav-glass-link group relative inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3.5 font-mono text-[clamp(14px,1.15vw,16px)] font-semibold lowercase tracking-[0.06em] text-[var(--ink)] transition-[background,box-shadow,transform,color] duration-300 hover:-translate-y-px ${item.className ?? ''}`}
               >
                 {item.label}
                 <span
@@ -143,7 +143,14 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
         </nav>
 
         <div className="relative flex items-center gap-3 sm:gap-6">
-          <span className="hidden font-mono text-[13px] lowercase tracking-[0.18em] text-[var(--ink)] opacity-60 xl:inline">
+          <span
+            className="group/loc hidden cursor-default items-center gap-2 rounded-full border border-transparent px-3 py-1.5 font-mono text-[13px] lowercase tracking-[0.18em] text-[var(--ink)] opacity-60 transition-[background,border-color,box-shadow,opacity,transform] duration-300 hover:-translate-y-px hover:border-white/60 hover:bg-white/70 hover:opacity-100 hover:shadow-[0_6px_18px_rgba(23,33,43,0.10)] xl:inline-flex dark:hover:border-white/25 dark:hover:bg-white/10 dark:hover:shadow-[0_6px_18px_rgba(0,0,0,0.4)]"
+            title="são paulo, brazil — utc-3"
+          >
+            <span
+              aria-hidden="true"
+              className="loc-dot size-1.5 shrink-0 rounded-full bg-[var(--accent)] transition-transform duration-300 group-hover/loc:scale-125"
+            />
             são paulo, brazil
           </span>
           <span
@@ -167,7 +174,7 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
             size="sm"
             className="header-theme-toggle lowercase"
           >
-            {dark ? <IconMoon size={17} /> : <IconSun size={17} />}
+            {dark ? <IconMoon size={16} /> : <IconSun size={16} />}
             {dark ? 'dark' : 'light'}
           </Button>
         </div>
