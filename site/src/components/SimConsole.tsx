@@ -195,11 +195,15 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-ink/15"
       >
         <div className="flex flex-col gap-7 py-4">
-          <div className="flex items-center justify-between font-mono text-micro uppercase tracking-label text-ink/45">
-            <span>ignis console — live chamber uplink</span>
-            <span className={engine === 'cpp' ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-              engine {engine === 'cpp' ? 'c++ · 30 hz' : 'local mirror'}
-            </span>
+          <div className="flex items-center gap-2 font-mono text-micro uppercase tracking-label text-ink/60">
+            <span
+              className={
+                engine === 'cpp'
+                  ? 'h-1.5 w-1.5 rounded-full bg-emerald-500'
+                  : 'h-1.5 w-1.5 rounded-full bg-amber-500'
+              }
+            />
+            <span>engine {engine === 'cpp' ? 'c++ · 30 hz' : 'local mirror'}</span>
           </div>
 
           {msgs.length === 0 && (
