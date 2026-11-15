@@ -64,7 +64,7 @@ export interface AgentTurnModel {
 
 export type ChatMsg = UserMsg | AgentTurnModel
 
-const GRAVITY_G: Record<string, number> = {
+export const GRAVITY_G: Record<string, number> = {
   microgravity: 0,
   lunar: 0.17,
   mars: 0.38,
@@ -142,7 +142,7 @@ export function presetToCommands(preset: PresetCommandSource): SiSimulationComma
 export function runOutcome(frame: ChamberState): string {
   if (frame.coolFlame || (frame.model === 'droplet' && frame.regime === 2))
     return 'cool flame sustained'
-  if (frame.model === 'spread' && frame.regime === 1) return 'burned out'
+  if (frame.model === 'spread' && frame.regime === 3) return 'burned out'
   const names =
     frame.model === 'droplet'
       ? ['ignition', 'hot flame', 'cool flame', 'extinction', 'out']

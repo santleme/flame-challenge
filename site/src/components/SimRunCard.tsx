@@ -27,11 +27,16 @@ export default function SimRunCard({
       setLastFrame((e as CustomEvent<ChamberState>).detail ?? null)
       setDone(true)
     }
+    const onOffline = () => {
+      setDone(true)
+    }
     window.addEventListener('ignis:sim-frame', onFrame)
     window.addEventListener('ignis:chamber-complete', onComplete)
+    window.addEventListener('ignis:chamber-offline', onOffline)
     return () => {
       window.removeEventListener('ignis:sim-frame', onFrame)
       window.removeEventListener('ignis:chamber-complete', onComplete)
+      window.removeEventListener('ignis:chamber-offline', onOffline)
     }
   }, [live])
 
@@ -72,7 +77,7 @@ export default function SimRunCard({
               : 'border border-accent/40 bg-accent/10 text-accent'
           }`}
         >
-          {done && lastFrame ? runOutcome(lastFrame) : '● live'}
+          {done ? (lastFrame ? runOutcome(lastFrame) : 'engine offline') : '● live'}
         </span>
       </div>
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { SiChamberState } from './api'
+import type { ChamberState } from './live'
 import {
   mergeChamberState,
   presetToCommands,
+  runOutcome,
   toolCallsFromCommands,
 } from './simConsole'
 
@@ -119,5 +121,77 @@ describe('presetToCommands', () => {
       presetToCommands({ investigationId: 'x', o2Pct: 21, flowCms: 1, gravity: 'mars' })
         .set_gravity_g,
     ).toBe(0.38)
+  })
+})
+
+describe('runOutcome', () => {
+  const baseFrame: ChamberState = {
+    model: 'spread',
+    tSec: 10,
+    regime: 1,
+    o2Pct: 21,
+    o2EffPct: 21,
+    volumeLiters: 100,
+    ignited: true,
+    coolFlame: false,
+    finished: false,
+  }
+
+  it('correctly reports spreading for active spread in regime 1', () => {
+    expect(runOutcome({ ...baseFrame, model: 'spread', regime: 1 })).toBe('spreading')
+  })
+
+  it('reports burned out when spread flame has extinguished (regime 3)', () => {
+    expect(runOutcome({ ...baseFrame, model: 'spread', regime: 3 })).toBe('burned out')
+  })
+
+  it('reports preheat for spread regime 0', () => {
+    expect(runOutcome({ ...baseFrame, model: 'spread', regime: 0 })).toBe('preheat')
+  })
+
+  it('reports cooling for spread regime 2', () => {
+    expect(runOutcome({ ...baseFrame, model: 'spread', regime: 2 })).toBe('cooling')
+  })
+
+  it('reports cool flame sustained when coolFlame is true or droplet regime 2', () => {
+    expect(runOutcome({ ...baseFrame, coolFlame: true })).toBe('cool flame sustained')
+    expect(runOutcome({ ...baseFrame, model: 'droplet', regime: 2, coolFlame: false })).toBe(
+      'cool flame sustained',
+    )
+  })
+
+  it('reports hot flame for droplet regime 1', () => {
+    expect(runOutcome({ ...baseFrame, model: 'droplet', regime: 1 })).toBe('hot flame')
+  })
+})
+
+describe('sequential follow-up command retention', () => {
+  it('preserves accumulated oxygen, flow, and investigation across partial commands', () => {
+    // Turn 1: initial run with 15% O2 and 2.5 cm/s flow on saffire
+    const turn1 = mergeChamberState(base, {
+      load_preset: 'saffire',
+      set_o2_percent: 15,
+      set_airflow_cm_s: 2.5,
+    })
+    expect(turn1.investigationId).toBe('saffire')
+    expect(turn1.o2Pct).toBe(15)
+    expect(turn1.flowCms).toBe(2.5)
+
+    // Turn 2: partial follow-up command adjusting only airflow to 0
+    const turn2 = mergeChamberState(turn1, {
+      set_airflow_cm_s: 0,
+    })
+    expect(turn2.investigationId).toBe('saffire')
+    expect(turn2.o2Pct).toBe(15)
+    expect(turn2.flowCms).toBe(0)
+
+    // Turn 3: partial follow-up command triggering containment
+    const turn3 = mergeChamberState(turn2, {
+      trigger_containment: 'n2_purge',
+    })
+    expect(turn3.investigationId).toBe('saffire')
+    expect(turn3.o2Pct).toBe(15)
+    expect(turn3.flowCms).toBe(0)
+    expect(turn3.sealed).toBe(true)
   })
 })

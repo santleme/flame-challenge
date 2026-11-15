@@ -5,9 +5,11 @@ import {
   synthesizeLocalSiResponse,
   type SiChamberState,
   type SiResponse,
+  type SiSimulationCommands,
 } from '../lib/api'
 import { emitSimulationCommands } from '../lib/simBus'
 import {
+  GRAVITY_G,
   mergeChamberState,
   toolCallsFromCommands,
   type ChatMsg,
@@ -43,7 +45,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
   const nid = () => ++idRef.current
 
   // the newest run-bearing turn owns the live chamber — flip its
-  // chamber.run tool row to done when the stream completes
+  // chamber.run tool row to done when the stream completes or engine goes offline
   useEffect(() => {
     const onDone = () =>
       setMsgs((ms) => {
@@ -58,12 +60,15 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
             }
             return copy
           }
-          if (m.kind === 'agent' && !m.run) break
         }
         return ms
       })
     window.addEventListener('ignis:chamber-complete', onDone)
-    return () => window.removeEventListener('ignis:chamber-complete', onDone)
+    window.addEventListener('ignis:chamber-offline', onDone)
+    return () => {
+      window.removeEventListener('ignis:chamber-complete', onDone)
+      window.removeEventListener('ignis:chamber-offline', onDone)
+    }
   }, [])
 
   // follow the tail unless the operator scrolled up to read
@@ -84,8 +89,18 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
     // ui command (2.5 s window) — ordering matters, React batches the rest
     if (sim && Object.values(sim).some((v) => v != null)) {
-      emitSimulationCommands(sim, 'sim-console', chamberRef.current.investigationId ?? null)
-      setChamber((s) => mergeChamberState(s, sim))
+      const nextChamber = mergeChamberState(chamberRef.current, sim)
+      // Materialize full chamber configuration so replacement LiveChamber instances
+      // in follow-up runs retain accumulated O2, airflow, and investigation settings
+      const mergedSim: SiSimulationCommands = {
+        load_preset: sim.load_preset ?? nextChamber.investigationId ?? undefined,
+        set_o2_percent: sim.set_o2_percent ?? nextChamber.o2Pct,
+        set_airflow_cm_s: sim.set_airflow_cm_s ?? nextChamber.flowCms,
+        set_gravity_g: sim.set_gravity_g ?? (GRAVITY_G[nextChamber.gravity] ?? 0),
+        trigger_containment: sim.trigger_containment ?? (nextChamber.sealed ? 'sealed' : undefined),
+      }
+      emitSimulationCommands(mergedSim, 'sim-console', nextChamber.investigationId ?? null)
+      setChamber(nextChamber)
     }
     setMsgs((ms2) =>
       ms2.map((m) =>

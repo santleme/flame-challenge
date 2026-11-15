@@ -117,12 +117,14 @@ export default function LiveChamber({
       () => {
         statusRef.current = 'offline'
         setStatus('offline')
+        window.dispatchEvent(new CustomEvent('ignis:chamber-offline'))
         paint()
       },
     )
     if (!wsRef.current) {
       statusRef.current = 'offline'
       setStatus('offline')
+      window.dispatchEvent(new CustomEvent('ignis:chamber-offline'))
       paint()
     }
   }, [inv, o2, flow, sealed, stop])

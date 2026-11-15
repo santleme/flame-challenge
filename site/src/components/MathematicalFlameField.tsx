@@ -395,12 +395,19 @@ export default function MathematicalFlameField({
       active.suppressed += ((target.suppressed ? 1 : 0) - active.suppressed) * easing
 
       const micro = 1 - smooth(0.02, 0.3, active.gravityG)
-      // Spectral weights, normalized-ish (suppression dominates, then cool).
-      const wSupp = active.suppressed
-      const wCool = active.coolFlame * (1 - wSupp)
-      const wEnr = active.enriched * (1 - wSupp) * (1 - active.coolFlame * 0.5)
-      const wClean = micro * (1 - wSupp) * (1 - wCool)
-      const wRich = Math.max(0, 1 - wSupp - wCool - wEnr - wClean)
+      // Spectral weights, normalized partition of unity (suppression dominates, then cool).
+      const rawSupp = active.suppressed
+      const rawCool = active.coolFlame * (1 - rawSupp)
+      const rawEnr = active.enriched * (1 - rawSupp) * (1 - active.coolFlame * 0.5)
+      const rawClean = micro * (1 - rawSupp) * (1 - rawCool)
+      const rawRich = Math.max(0, 1 - rawSupp - rawCool - rawEnr - rawClean)
+      const sumW = rawSupp + rawCool + rawEnr + rawClean + rawRich
+      const invW = sumW > 1e-4 ? 1 / sumW : 1
+      const wSupp = rawSupp * invW
+      const wCool = rawCool * invW
+      const wEnr = rawEnr * invW
+      const wClean = rawClean * invW
+      const wRich = rawRich * invW
 
       const o2Gain = 0.7 + Math.min(0.6, active.o2Pct / 70)
       const turbulence = (0.55 + (1 - micro) * 0.45) * (1 + 0.4 * wEnr) * (1 - wCool * 0.5)
