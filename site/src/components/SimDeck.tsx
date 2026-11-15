@@ -1,8 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { gsap, navigateBack } from '../lib/scroll'
+import { gsap } from '../lib/scroll'
 import KeyedFlame from './KeyedFlame'
-import { IconArrowLeft } from './Icons'
-import Button from './ui/Button'
 import SimConsole from './SimConsole'
 import type { MissionOutcomeStatus } from './CrewTimelinePanel'
 
@@ -200,21 +198,9 @@ export default function SimDeck() {
           src={{ hd: '/assets/saffire5_uv.mp4', sd: '/assets/saffire5_uv_sd.mp4' }}
         />
         <header className="relative pb-3">
-          <div data-hero className="eyebrow flex items-baseline justify-between gap-6 opacity-70">
-            <Button asChild variant="glass" size="sm" className="lowercase">
-              <a
-                href="#top"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigateBack()
-                }}
-              >
-                <IconArrowLeft size={14} /> back
-              </a>
-            </Button>
-            <span className="hidden cursor-default transition-colors duration-300 hover:text-accent hover:opacity-100 sm:inline">
-              ignis console — live chamber uplink
-            </span>
+          <div data-hero className="eyebrow flex items-baseline gap-3 opacity-80">
+            <span className="h-2 w-2 rounded-full bg-accent" />
+            <span>ignis — simulations console</span>
           </div>
           <h1 data-hero className="mt-5 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-bold leading-display tracking-tight">
             Simulations
