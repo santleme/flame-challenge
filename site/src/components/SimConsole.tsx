@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  engineStatus,
   siChat,
   siVoice,
   synthesizeLocalSiResponse,
-  type EngineStatus,
   type SiChamberState,
   type SiResponse,
 } from '../lib/api'
@@ -17,6 +15,7 @@ import {
 } from '../lib/simConsole'
 import AgentTurn from './AgentTurn'
 import Composer from './Composer'
+import IgnisSprite from './IgnisSprite'
 
 export interface SimPreset extends PresetCommandSource {
   id: string
@@ -34,24 +33,14 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     flowCms: presets[0]?.flowCms ?? null,
     gravity: presets[0]?.gravity ?? 'microgravity',
   }))
-  const [engine, setEngine] = useState<EngineStatus>('checking')
   const chamberRef = useRef(chamber)
   chamberRef.current = chamber
+  const busy = msgs.some((m) => m.kind === 'agent' && m.pending)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
   const idRef = useRef(0)
   const nid = () => ++idRef.current
-
-  useEffect(() => {
-    let cancelled = false
-    void engineStatus().then((s) => {
-      if (!cancelled) setEngine(s)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // the newest run-bearing turn owns the live chamber — flip its
   // chamber.run tool row to done when the stream completes
@@ -110,6 +99,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               action: res.recommended_action || null,
               run,
               mode: res.mode,
+              model: res.model,
+              engine: res.engine ?? null,
+              riskIndex: typeof res.chamber?.riskIndex === 'number' ? res.chamber.riskIndex : null,
+              evidence: res.evidence ?? [],
               ms,
             }
           : m,
@@ -126,6 +119,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     action: null,
     run: null,
     mode: null,
+    model: null,
+    engine: null,
+    riskIndex: null,
+    evidence: [],
     ms: null,
   })
 
@@ -174,6 +171,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
                 action: null,
                 run: null,
                 mode: 'offline-fallback',
+                model: null,
+                engine: null,
+                riskIndex: null,
+                evidence: [],
                 ms: performance.now() - t0,
               }
             : m,
@@ -188,31 +189,25 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <section aria-label="Ignis conversation" className="flex min-h-0 flex-1 flex-col font-chat-sans">
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        role="log"
+        aria-label="Conversation with Ignis"
+        aria-live="polite"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-ink/15"
       >
-        <div className="flex flex-col gap-7 py-4">
-          <div className="flex items-center gap-2 font-mono text-micro uppercase tracking-label text-ink/60">
-            <span
-              className={
-                engine === 'cpp'
-                  ? 'h-1.5 w-1.5 rounded-full bg-emerald-500'
-                  : 'h-1.5 w-1.5 rounded-full bg-amber-500'
-              }
-            />
-            <span>engine {engine === 'cpp' ? 'c++ · 30 hz' : 'local mirror'}</span>
-          </div>
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-7 py-5 sm:py-7">
 
           {msgs.length === 0 && (
-            <div className="py-8">
-              <p className="m-0 max-w-2xl text-body leading-copy text-ink/80">
-                Describe a scenario — an atmosphere, a material, a historical
-                fire — and Ignis translates it into chamber parameters, then
-                streams a real combustion run from the compiled physics core.
-                Voice works too: hold ◉ below.
+            <div className="flex flex-1 flex-col items-center justify-center py-3 text-center sm:py-6">
+              <IgnisSprite working={busy} />
+              <h2 className="m-0 mt-2 max-w-xl font-jetbrains text-[clamp(1.75rem,4vw,2.25rem)] font-bold leading-tight tracking-tight">
+                What are we testing today?
+              </h2>
+              <p className="mb-0 mt-3 max-w-xl font-chat-sans text-base font-normal leading-7 text-ink/75 sm:text-lg">
+                Ask Ignis about an experiment or describe what you want to test.
               </p>
             </div>
           )}
@@ -221,7 +216,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
             m.kind === 'user' ? (
               <div
                 key={m.id}
-                className="ml-auto max-w-[70%] rounded-2xl rounded-br-md border border-accent/30 bg-accent/10 px-4 py-2.5 text-body leading-relaxed text-ink"
+                className="ml-auto max-w-[85%] rounded-2xl rounded-br-md border border-sky-200/70 bg-sky-100/75 px-4 py-3 text-base leading-relaxed text-slate-800 dark:border-sky-300/15 dark:bg-sky-400/10 dark:text-ink sm:max-w-[75%]"
               >
                 {m.text}
               </div>
@@ -232,9 +227,19 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         </div>
       </div>
 
-      <div className="pt-3">
-        <Composer onSend={sendText} onVoice={sendVoice} />
+      <div className="mx-auto w-full max-w-3xl pt-3">
+        <Composer
+          onSend={sendText}
+          onVoice={sendVoice}
+          disabled={busy}
+          flameDefaults={{
+            gravityG: chamber.gravity === 'earth' ? 1 : chamber.gravity === 'lunar' ? 0.16 : chamber.gravity === 'mars' ? 0.38 : 0,
+            o2Pct: chamber.o2Pct,
+            airflowCms: chamber.flowCms ?? 0.5,
+            coolFlame: false,
+          }}
+        />
       </div>
-    </div>
+    </section>
   )
 }

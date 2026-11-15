@@ -1,6 +1,3 @@
-import { useEffect, useRef } from 'react'
-import { gsap } from '../lib/scroll'
-import KeyedFlame from './KeyedFlame'
 import SimConsole from './SimConsole'
 import type { MissionOutcomeStatus } from './CrewTimelinePanel'
 
@@ -177,41 +174,11 @@ export const MISSION_PRESETS: MissionPreset[] = [
 ]
 
 export default function SimDeck() {
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const root = rootRef.current
-    if (!root || matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const ctx = gsap.context(
-      () => gsap.from('[data-hero]', { opacity: 0, y: 14, duration: 0.6, ease: 'power2.out', stagger: 0.07 }),
-      root,
-    )
-    return () => ctx.revert()
-  }, [])
-
   return (
-    <div ref={rootRef} data-lenis-prevent className="fixed inset-0 z-10 flex flex-col bg-bg">
-      <div className="relative px-5 pt-24 sm:px-10 sm:pt-28">
-        <KeyedFlame
-          className="inset-x-0 -top-8 h-[min(40vh,320px)]"
-          strength={0.3}
-          src={{ hd: '/assets/saffire5_uv.mp4', sd: '/assets/saffire5_uv_sd.mp4' }}
-        />
-        <header className="relative pb-3">
-          <div data-hero className="eyebrow flex items-baseline gap-3 opacity-80">
-            <span className="h-2 w-2 rounded-full bg-accent" />
-            <span>ignis — simulations console</span>
-          </div>
-          <h1 data-hero className="mt-5 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-bold leading-display tracking-tight">
-            Simulations
-          </h1>
-        </header>
-      </div>
-
-      {/* edge-to-edge agent console — no centered column anywhere */}
-      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 sm:px-10">
+    <section data-lenis-prevent aria-label="Simulations" className="fixed inset-0 z-10 flex flex-col bg-bg">
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 pt-24 sm:px-10 sm:pb-6 sm:pt-28">
         <SimConsole presets={MISSION_PRESETS} />
       </div>
-    </div>
+    </section>
   )
 }

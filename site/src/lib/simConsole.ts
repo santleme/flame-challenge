@@ -7,6 +7,7 @@ import {
   FALLBACK_INVESTIGATIONS,
   gravityRegime,
   type SiChamberState,
+  type SiEvidence,
   type SiSimulationCommands,
 } from './api'
 import type { ChamberState } from './live'
@@ -54,6 +55,10 @@ export interface AgentTurnModel {
   action: string | null
   run: RunRequest | null
   mode: string | null
+  model: string | null
+  engine: string | null
+  riskIndex: number | null
+  evidence: SiEvidence[]
   ms: number | null
 }
 

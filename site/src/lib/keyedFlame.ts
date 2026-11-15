@@ -51,9 +51,27 @@ type VideoWithVFC = HTMLVideoElement & {
 interface GLPipe {
   gl: WebGLRenderingContext
   tex: WebGLTexture
+  program: WebGLProgram
+  buffer: WebGLBuffer
+  attribute: number
 }
 
+// React StrictMode mounts effects, cleans them up, then mounts them again
+// with the same canvas in development. Keep its WebGL resources with the
+// canvas so the second mount can reuse the live context.
+const GL_PIPES = new WeakMap<HTMLCanvasElement, GLPipe>()
+
 function initGL(canvas: HTMLCanvasElement): GLPipe | null {
+  const cached = GL_PIPES.get(canvas)
+  if (cached && !cached.gl.isContextLost()) {
+    cached.gl.useProgram(cached.program)
+    cached.gl.bindBuffer(cached.gl.ARRAY_BUFFER, cached.buffer)
+    cached.gl.enableVertexAttribArray(cached.attribute)
+    cached.gl.vertexAttribPointer(cached.attribute, 2, cached.gl.FLOAT, false, 0, 0)
+    cached.gl.bindTexture(cached.gl.TEXTURE_2D, cached.tex)
+    return cached
+  }
+
   const gl = canvas.getContext('webgl', {
     alpha: true,
     premultipliedAlpha: true,
@@ -82,6 +100,7 @@ function initGL(canvas: HTMLCanvasElement): GLPipe | null {
 
     // fullscreen quad — two triangles, no per-frame attributes
     const buf = gl.createBuffer()
+    if (!buf) throw new Error('no buffer')
     gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -103,7 +122,9 @@ function initGL(canvas: HTMLCanvasElement): GLPipe | null {
     // bottom-left (0,0) uv maps to the frame's bottom-left
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
     gl.clearColor(0, 0, 0, 0)
-    return { gl, tex }
+    const pipe = { gl, tex, program: prog, buffer: buf, attribute: loc }
+    GL_PIPES.set(canvas, pipe)
+    return pipe
   } catch {
     return null
   }
@@ -243,11 +264,8 @@ export function attachKeyedFlame(
     if (onTimeUpdate)
       video.removeEventListener('timeupdate', onTimeUpdate)
     if (onEnded) video.removeEventListener('ended', onEnded)
-    if (pipe) {
-      pipe.gl
-        .getExtension('WEBGL_lose_context')
-        ?.loseContext()
-      pipe = null
-    }
+    // Do not force-lose the canvas context here: StrictMode immediately
+    // re-runs this effect, and a lost WebGL context cannot switch to 2D.
+    pipe = null
   }
 }

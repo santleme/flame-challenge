@@ -25,6 +25,8 @@
 
   --font-sans: 'IBM Plex Mono', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-chat-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
   --font-display: 'Space Mono', 'Courier Prime', monospace;
 
   /* editorial mono type scale — replaces ad-hoc 9–13px literals */
@@ -523,3 +525,4 @@ button.pill:active { transform: translateY(0) scale(.96); }
   .caret, .caret-blink, .clock-blink, .ship-drift, .rise-in, .loc-dot { animation: none; }
   .heat-surface { animation: none; opacity: .85; }
 }
+
