@@ -27,6 +27,20 @@ export function attachSmoothScroll(el: HTMLElement, lerp = 0.11, wheel = 0.95): 
 
   const onWheel = (e: WheelEvent) => {
     if (e.ctrlKey || e.defaultPrevented) return
+    // Nested scrollable containers (e.g. the console history) consume the
+    // wheel natively; the deck only takes over once they hit their own edge.
+    let node = e.target as HTMLElement | null
+    while (node && node !== el) {
+      const scrollable = node.scrollHeight - node.clientHeight > 1
+      const oy = getComputedStyle(node).overflowY
+      if (scrollable && (oy === 'auto' || oy === 'scroll')) {
+        const atTop = node.scrollTop <= 1
+        const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1
+        if ((e.deltaY > 0 && !atBottom) || (e.deltaY < 0 && !atTop)) return
+        break
+      }
+      node = node.parentElement
+    }
     e.preventDefault()
     if (!raf) pos = target = el.scrollTop
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1
