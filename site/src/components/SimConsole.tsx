@@ -287,6 +287,22 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               <p className="mb-0 mt-3 max-w-xl font-chat-sans text-base font-normal leading-7 text-ink/75 sm:text-lg">
                 Ask Ignis about an experiment or describe what you want to test.
               </p>
+              <div className="mt-6 flex max-w-xl flex-wrap items-center justify-center gap-2">
+                {[
+                  'Run a SAFFIRE burn',
+                  'Is methanol safe at 24% O₂?',
+                  'Show me the riskiest scenario',
+                ].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => sendText(s)}
+                    className="rounded-full border border-edge/70 bg-ink/[0.035] px-4 py-2 font-mono text-sm text-ink/80 transition-colors duration-200 hover:border-accent/60 hover:bg-accent/10 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent dark:bg-white/[0.05]"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

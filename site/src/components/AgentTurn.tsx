@@ -52,7 +52,7 @@ export default function AgentTurn({
     <div className="flex w-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-sm text-ink/65">
         <span className="h-2 w-2 rounded-full bg-accent shadow-[0_0_0_3px_rgba(73,184,214,.12)]" />
-        <span className="font-semibold text-ink/80">Assistant</span>
+        <span className="font-semibold text-ink/80">Ignis</span>
         {turn.mode && <span>{turn.mode === 'llm' ? 'Connected' : 'Local response'}</span>}
       </div>
 
@@ -89,11 +89,12 @@ export default function AgentTurn({
       )}
 
       {turn.riskIndex != null && !Number.isNaN(turn.riskIndex) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-edge/70 bg-ink/[0.035] px-3 py-1.5 text-sm text-ink/70 dark:bg-white/[0.05]">Risk index</span>
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 font-mono text-sm font-medium tabular-nums text-amber-800 dark:text-amber-200">
-            {turn.riskIndex.toFixed(4)}
+        <div className="flex items-center gap-3 rounded-2xl border border-edge/70 bg-ink/[0.035] px-4 py-3 dark:bg-white/[0.05]">
+          <span className="font-display text-3xl font-bold tabular-nums leading-none tracking-tight text-amber-700 dark:text-amber-300">
+            {Math.round(turn.riskIndex * 100)}
+            <span className="text-lg font-semibold opacity-60">%</span>
           </span>
+          <span className="font-mono text-tiny uppercase tracking-label text-ink/60">risk index</span>
         </div>
       )}
 
