@@ -1,4 +1,4 @@
-// CDP smoke test for the generated-dashboard and conversational simulation routes.
+// CDP smoke test for the dashboard shell and conversational simulation routes.
 // usage: node scripts/route_test.mjs (needs `ws` under /tmp/cdpx, Vite :5173,
 // and Chromium DevTools on :9333)
 import { createRequire } from 'module'
@@ -35,7 +35,7 @@ const evalJs = async (expression) => {
 }
 const state = async () => JSON.parse(await evalJs(`JSON.stringify({
   hash: location.hash,
-  dashboard: [...document.querySelectorAll('h1')].some((heading) => heading.textContent?.trim() === 'Dashboard'),
+  dashboard: [...document.querySelectorAll('h1')].some((heading) => /dashboard/i.test(heading.textContent || '')),
   deck: !!document.querySelector('#scenario-prompt'),
 })`))
 
@@ -49,15 +49,15 @@ const check = (name, condition, extra = '') => {
 await send('Page.enable')
 await send('Page.navigate', { url: BASE })
 await sleep(1800)
-await evalJs('localStorage.removeItem("ignis-generated-dashboards-v1"); 1')
 
-// Dashboard is an empty generated-artifact library until a report exists.
+// Dashboard is a kept route: the page exists, but its report widgets were
+// removed — it renders as an empty shell pointing back to simulations.
 await send('Page.navigate', { url: `${BASE}/#dashboard` })
 await sleep(900)
 let current = await state()
 let dashboardText = await evalJs(`document.body.innerText || ''`)
 check('dashboard route opens its dedicated screen', current.hash === '#dashboard' && current.dashboard, JSON.stringify(current))
-check('empty dashboard asks for a simulation first', /No generated dashboards yet/.test(dashboardText) && /Simulations/.test(dashboardText), dashboardText.slice(0, 100))
+check('dashboard renders the empty shell', /No mission briefs on this dashboard/.test(dashboardText) && /Run Live Simulation/.test(dashboardText), dashboardText.slice(0, 100))
 
 // Simulations owns the chat, voice input, and chamber; legacy SI-console
 // selectors and the former Investigation/Run Experiment controls are gone.
@@ -75,7 +75,8 @@ check('simulations route opens conversational workbench', current.hash === '#sim
 check('deck has chamber and no legacy console controls', deck.chamber && !deck.legacyConsole && !deck.investigationControls, JSON.stringify(deck))
 
 // Keep this test independent from the local API services and verify the
-// end-to-end assistant → generated report → dashboard link flow.
+// end-to-end copilot reply renders in the conversation — and that no
+// report-generation controls leaked back in.
 await evalJs(`window.fetch = async (input) => {
   const url = String(input)
   const json = (body) => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }))
@@ -96,11 +97,13 @@ await sleep(700)
 let chatText = await evalJs(`document.querySelector('[aria-live="polite"]')?.textContent || ''`)
 if (!chatText.includes('Scenario is ready')) chatText = await evalJs(`document.body.textContent || ''`)
 check('copilot response is formatted in the conversation', /Scenario is ready for review/.test(chatText) && /Sources: NASA PSI records/.test(chatText))
-await evalJs(`[...document.querySelectorAll('a,button')].find((element) => element.textContent.includes('Generate dashboard'))?.click(); 1`)
+const genButtons = await evalJs(`[...document.querySelectorAll('a,button')].filter((element) => /Mission Brief|Generate dashboard|Generate Mission|Open Mission/i.test(element.textContent || '')).map((element) => element.textContent.trim().slice(0, 60))`)
+check('no report-generation controls remain', Array.isArray(genButtons) && genButtons.length === 0, JSON.stringify(genButtons))
+await send('Page.navigate', { url: `${BASE}/#dashboard` })
 await sleep(900)
 current = await state()
 dashboardText = await evalJs(`document.body.innerText || ''`)
-check('analysis generates a report and routes to it', current.hash.startsWith('#dashboard-') && /Analyze a low oxygen case/.test(dashboardText), JSON.stringify(current))
+check('dashboard route still resolves to the empty shell', current.hash === '#dashboard' && current.dashboard && /No mission briefs on this dashboard/.test(dashboardText), JSON.stringify(current))
 
 console.log(`\n${pass} pass, ${fail} fail`)
 ws.close()

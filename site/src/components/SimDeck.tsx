@@ -4,15 +4,12 @@ import {
   gravityRegime,
   investigationDefaultFlow,
   materialsIndex,
-  riskIndex,
   siChat,
-  siNeighbors,
   siVoice,
   type InvestigationSpec,
   type SiChamberState,
   type SiResponse,
 } from '../lib/api'
-import { generateDashboard } from '../lib/generatedDashboards'
 import { emitSimulationCommands } from '../lib/simBus'
 import {
   clearInnerTarget,
@@ -23,7 +20,6 @@ import {
   scrollToSection,
   setFilterTag,
 } from '../lib/scroll'
-import type { ChamberState } from '../lib/live'
 import KeyedFlame from './KeyedFlame'
 import LiveChamber from './LiveChamber'
 import { IconArrowLeft, IconArrowUpRight, IconMic, IconSend } from './Icons'
@@ -38,19 +34,10 @@ type Message = {
   text: string
   response?: SiResponse
   prompt?: string
-  scenario?: SiChamberState
-  saved?: boolean
-  dashboardId?: string
   warning?: string
 }
 
 type PendingRun = {
-  prompt: string
-  response: SiResponse
-  messageId: number
-  analysisScenario: SiChamberState
-  scenario: SiChamberState
-  engineGravityMode: string
   navigation: SiResponse['navigation']
 }
 
@@ -298,41 +285,9 @@ export default function SimDeck() {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id
       if (id) go(id)
     }
-    const onComplete = async (event: Event) => {
+    const onComplete = () => {
       const current = latestResponse.current
       if (!current) return
-      const frame = (event as CustomEvent<ChamberState>).detail
-      const materialId = current.scenario.materialId ?? 'pmma'
-      const [runRisk, neighbors] = await Promise.all([
-        riskIndex(materialId, current.scenario.o2Pct, current.scenario.flowCms, current.scenario.gravity),
-        siNeighbors(materialId, current.scenario.o2Pct, current.scenario.flowCms),
-      ])
-      const reportResponse: SiResponse = {
-        ...current.response,
-        chamber: {
-          ...current.response.chamber,
-          ...runRisk,
-          materialId: current.scenario.materialId,
-          o2Pct: current.scenario.o2Pct,
-          flowCms: current.scenario.flowCms,
-          gravity: current.scenario.gravity,
-        },
-        ...(neighbors ? { evidence: neighbors } : {}),
-      }
-      const report = generateDashboard(
-        current.prompt,
-        reportResponse,
-        frame,
-        current.scenario,
-        current.analysisScenario,
-        current.engineGravityMode,
-      )
-      setMessages((all) =>
-        all.map((message) =>
-          message.id === current.messageId ? { ...message, saved: true, dashboardId: report.id } : message,
-        ),
-      )
-      setNotice('Simulation complete. Its report is ready in Dashboard.')
       applyNavigation(current.navigation)
       latestResponse.current = null
     }
@@ -437,19 +392,8 @@ export default function SimDeck() {
       )
     const assistantMessageId = nextId.current++
     const gravityCommand = typeof gravityG === 'number'
-    const engineGravityMode = investigationSpecs[nextScenario.investigationId ?? '']?.partialGravity
-      ? 'partial-gravity correction calibrated for the FLARE preset'
-      : 'preset gravity mode; requested gravity applies to risk analysis only'
     if (hasRunConditions)
-      latestResponse.current = {
-        prompt,
-        response,
-        messageId: assistantMessageId,
-        analysisScenario: cloneScenario(analysisScenario),
-        scenario: cloneScenario(nextScenario),
-        engineGravityMode,
-        navigation: response.navigation,
-      }
+      latestResponse.current = { navigation: response.navigation }
     emitSimulationCommands(commandSet, 'sim-chat', nextScenario.investigationId ?? null)
     setMessages((all) => [
       ...all,
@@ -459,7 +403,6 @@ export default function SimDeck() {
         text: response.briefing,
         response,
         prompt,
-        scenario: cloneScenario(analysisScenario),
         ...(invalidPreset
           ? {
               warning: `The copilot requested “${requestedPreset}”, which is not a calibrated chamber preset. The chamber settings were left unchanged and no run was started.`,
@@ -561,22 +504,6 @@ export default function SimDeck() {
       setVoiceState('idle')
       setNotice('Microphone permission was unavailable.')
     }
-  }
-
-  const save = (message: Message): string | undefined => {
-    if (!message.response || !message.prompt) return
-    if (message.dashboardId) return message.dashboardId
-    if (latestResponse.current?.messageId === message.id) {
-      setNotice('Simulation is still running in the chamber. Report will compile automatically on completion.')
-      return
-    }
-    const scenario = cloneScenario(message.scenario ?? chamberRef.current)
-    const report = generateDashboard(message.prompt, message.response, undefined, scenario, scenario)
-    setMessages((all) =>
-      all.map((item) => (item.id === message.id ? { ...item, saved: true, dashboardId: report.id } : item)),
-    )
-    setNotice('Analysis saved to Dashboard.')
-    return report.id
   }
 
   const submit = (event: FormEvent) => {
@@ -765,18 +692,6 @@ export default function SimDeck() {
                         {message.warning}
                       </p>
                     )}
-                    <div className="mt-5 flex flex-wrap items-center gap-3">
-                      <Button
-                        variant="primary"
-                        size="default"
-                        onClick={() => {
-                          const id = message.dashboardId ?? save(message)
-                          navigate(id ? `#dashboard-${id}` : '#dashboard')
-                        }}
-                      >
-                        {message.saved ? 'Open Mission Brief' : 'Generate Mission Brief'} <IconArrowUpRight size={16} />
-                      </Button>
-                    </div>
                   </>
                 )}
               </article>
