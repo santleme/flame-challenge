@@ -1,0 +1,18 @@
+# Only site/ + the JSONs it imports from the monorepo are needed to build
+/*
+!site/
+!data/
+!shared/
+!vercel.json
+site/node_modules/
+site/dist/
+site/.vercel/
+data/*
+!data/bundle/
+data/bundle/*
+!data/bundle/investigations.json
+!data/bundle/investigation_diffs.json
+shared/*
+!shared/calibrated-data/
+shared/calibrated-data/*
+!shared/calibrated-data/risk_model.json
