@@ -230,7 +230,7 @@ export default function PsiDataset() {
           </div>
 
           {/* theme filter — the names the brief calls out */}
-          <div data-reveal className="mt-5 flex flex-wrap gap-2">
+          <div data-reveal className="dataset-filters mt-5">
             {['all', ...ALL_THEMES].map((t) => (
               <Button
                 key={t}
