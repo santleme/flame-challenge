@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   dashboardGeneratedEvent,
   getGeneratedDashboards,
+  clearGeneratedDashboards,
+  SEED_REPORTS,
   exportReportMarkdown,
   type GeneratedDashboard,
 } from '../lib/generatedDashboards'
@@ -13,6 +15,7 @@ import CrewTimelinePanel from './CrewTimelinePanel'
 import InteractiveEquationCanvas from './InteractiveEquationCanvas'
 import CounterfactualTrackCard from './CounterfactualTrackCard'
 import MissionWaffleMatrix from './MissionWaffleMatrix'
+import Footer from './Footer'
 
 function percent(value: unknown): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
@@ -402,7 +405,14 @@ export default function Dashboard() {
             <h2 className="font-display text-2xl font-bold sm:text-3xl">
               Interactive Mission Briefs ({items.length})
             </h2>
-            <span className="font-mono text-xs opacity-60">Pre-Seeded &amp; Live Simulation Reports</span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs opacity-60">Pre-Seeded &amp; Live Simulation Reports</span>
+              {items.length > SEED_REPORTS.length && (
+                <Button variant="glass" size="sm" onClick={clearGeneratedDashboards}>
+                  Clear generated
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-12">
@@ -412,6 +422,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   )
 }

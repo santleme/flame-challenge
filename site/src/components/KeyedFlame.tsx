@@ -16,11 +16,14 @@ export default function KeyedFlame({
   className = '',
   strength = 0.75,
   src = { hd: '/assets/sofie_flame_hd.mp4', sd: '/assets/sofie_flame.mp4' },
+  mask = '[mask-image:radial-gradient(ellipse_at_center,black_38%,transparent_74%)]',
 }: {
   className?: string
   /** canvas alpha — dial it down when dense copy rides over the flame */
   strength?: number
   src?: { hd: string; sd: string }
+  /** tailwind mask-image class on the canvas — override to soften the edges */
+  mask?: string
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -61,7 +64,7 @@ export default function KeyedFlame({
       <div aria-hidden="true" className={`pointer-events-none absolute ${className}`}>
         <canvas
           ref={canvasRef}
-          className="block h-full w-full object-cover [mask-image:radial-gradient(ellipse_at_center,black_38%,transparent_74%)]"
+          className={`block h-full w-full object-cover ${mask}`}
           style={{ opacity: strength }}
         />
         {/* readability veil — the flame stays ambient, never a wall of

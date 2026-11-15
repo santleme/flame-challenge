@@ -9,6 +9,7 @@ import { attachKeyedFlame } from '../lib/keyedFlame'
 import { getFilterTag, gsap, navigateBack, setFilterTag } from '../lib/scroll'
 import { IconArrowLeft } from './Icons'
 import Button from './ui/Button'
+import Footer from './Footer'
 
 const SOURCES = [
   { label: 'psi repo', href: 'https://psi.nasa.gov/physci/repo' },
@@ -365,6 +366,7 @@ export default function PsiDataset() {
           </div>
         </div>
       </section>
+      <Footer />
     </div>
   )
 }

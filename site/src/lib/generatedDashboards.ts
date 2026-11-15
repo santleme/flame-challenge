@@ -897,6 +897,16 @@ export function generateDashboard(
   return item
 }
 
+export function clearGeneratedDashboards(): void {
+  try {
+    localStorage.removeItem(STORE_KEY)
+    localStorage.removeItem('ignis-generated-dashboards-v1')
+  } catch {
+    // ignore storage errors
+  }
+  window.dispatchEvent(new CustomEvent(EVENT))
+}
+
 export function exportReportMarkdown(report: GeneratedDashboard): void {
   const spec = report.spec
   const md = `# NASA Space Apps 2026 — IGNIS Executive Flight Safety Brief

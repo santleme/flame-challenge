@@ -25,8 +25,6 @@
 
   --font-sans: 'IBM Plex Mono', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-chat-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
   --font-display: 'Space Mono', 'Courier Prime', monospace;
 
   /* editorial mono type scale — replaces ad-hoc 9–13px literals */
@@ -375,18 +373,20 @@ button.pill:active { transform: translateY(0) scale(.96); }
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.header-theme-toggle { min-height: 48px; padding-inline: .9rem; }
+.header-theme-toggle { min-height: 34px; padding-inline: .8rem; }
 .nav-glass-link {
-  min-height: 48px;
+  min-height: 34px;
   border: 1px solid color-mix(in srgb, white 72%, var(--accent) 12%);
   background: linear-gradient(180deg, rgb(255 255 255 / .5), rgb(255 255 255 / .17));
   box-shadow: 0 5px 14px rgb(23 33 43 / .08), inset 0 1.5px 0 rgb(255 255 255 / .85), inset 0 -1px 0 rgb(23 33 43 / .06);
   -webkit-backdrop-filter: blur(24px) saturate(220%);
   backdrop-filter: blur(24px) saturate(220%);
 }
+[data-theme="dark"] .header-theme-toggle { border-color: rgb(255 255 255 / .3); background: linear-gradient(180deg, rgb(255 255 255 / .16), rgb(255 255 255 / .06)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .2); }
+[data-theme="dark"] .header-theme-toggle:not(:disabled):hover { border-color: rgb(255 255 255 / .5); background: rgb(255 255 255 / .22); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3); }
 .nav-glass-link:hover { background: rgb(255 255 255 / .82); box-shadow: 0 8px 20px rgb(23 33 43 / .12), inset 0 1.5px 0 white, inset 0 -1px 0 rgb(23 33 43 / .07); }
-[data-theme="dark"] .nav-glass-link { border-color: rgb(255 255 255 / .48); background: linear-gradient(180deg, rgb(255 255 255 / .2), rgb(255 255 255 / .08)); box-shadow: 0 5px 14px rgb(0 0 0 / .3), inset 0 1.5px 0 rgb(255 255 255 / .34), inset 0 -1px 0 rgb(0 0 0 / .25); }
-[data-theme="dark"] .nav-glass-link:hover { background: rgb(255 255 255 / .28); box-shadow: 0 8px 20px rgb(0 0 0 / .36), inset 0 1.5px 0 rgb(255 255 255 / .5), inset 0 -1px 0 rgb(0 0 0 / .3); }
+[data-theme="dark"] .nav-glass-link { border-color: rgb(255 255 255 / .3); background: linear-gradient(180deg, rgb(255 255 255 / .12), rgb(255 255 255 / .05)); box-shadow: inset 0 1px 0 rgb(255 255 255 / .18); }
+[data-theme="dark"] .nav-glass-link:hover { background: rgb(255 255 255 / .2); box-shadow: inset 0 1px 0 rgb(255 255 255 / .3); }
 
 /* destructive action */
 .btn-destructive {
@@ -526,3 +526,63 @@ button.pill:active { transform: translateY(0) scale(.96); }
   .heat-surface { animation: none; opacity: .85; }
 }
 
+/* ---- simulations deck — free-floating spread. The section breaks out
+   of the 72rem shell to the viewport width; --gut is the shell's content
+   inset so type stays on the editorial column while media bleeds to the
+   screen edge and dissolves inward (no boxes, no clips). */
+.mission-bleed {
+  --gut: calc(50vw - min(46vw, 48rem));
+  margin-inline: calc(50% - 50vw);
+  padding-inline: var(--gut);
+}
+.bleed-l { margin-left: calc(-1 * var(--gut)); }
+.bleed-r { margin-right: calc(-1 * var(--gut)); }
+@media (max-width: 639.98px) { .bleed-l, .bleed-r { margin-inline: calc(-1 * var(--gut)); } }
+/* rounded diagonal cuts for the mission plates — objectBoundingBox
+   clipPaths are defined inline in SimDeck so they scale to any box */
+.cut-hero { clip-path: url(#cut-hero); }
+.cut-rail { clip-path: url(#cut-rail); }
+.cut-slant { clip-path: url(#cut-slant); }
+.cut-panel { clip-path: url(#cut-panel); }
+
+/* scrolling carousel — two identical groups slide left by exactly one
+   group width for a seamless loop; keyboard focus pauses it (hover does not), reduced-motion
+   users get a plain horizontal scroller instead */
+.bleed-both { margin-inline: calc(-1 * var(--gut)); }
+.marquee {
+  overflow: hidden;
+  padding-block: 1.75rem;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+}
+.marquee-track { display: flex; width: max-content; animation: marquee-slide 70s linear infinite; }
+.marquee:has(:focus-visible) .marquee-track { animation-play-state: paused; }
+.marquee-group { display: flex; flex-shrink: 0; gap: clamp(2.5rem, 5vw, 6rem); padding-right: clamp(2.5rem, 5vw, 6rem); list-style: none; margin: 0; padding-left: 0; }
+.marquee-item { width: clamp(19rem, 30vw, 28rem); flex-shrink: 0; }
+@keyframes marquee-slide { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .marquee { overflow-x: auto; }
+  .marquee-track { animation: none; }
+  .marquee-group[aria-hidden="true"] { display: none; }
+}
+
+.ship-sprite {
+  width: 100%;
+  aspect-ratio: 543 / 380;
+  background: url('/assets/ship_science_patrol_anim.png') no-repeat;
+  background-size: 400% auto;
+  background-position: 0% 40.7%;
+  cursor: pointer;
+  transition: translate .3s ease-out;
+}
+.ship-sprite:hover { animation: ship-engines .72s infinite, ship-rumble .12s linear infinite alternate; }
+@keyframes ship-engines {
+  0%, 100% { background-position: 33.333% 40.7%; animation-timing-function: steps(1); }
+  25% { background-position: 66.667% 40.7%; animation-timing-function: steps(1); }
+  50% { background-position: 100% 40.7%; animation-timing-function: steps(1); }
+  75% { background-position: 66.667% 40.7%; animation-timing-function: steps(1); }
+}
+@keyframes ship-rumble { from { translate: 0 0; } to { translate: -1px 1px; } }
+@keyframes ship-float { from { transform: translateY(0); } to { transform: translateY(-0.05em); } }
+.ship-float { animation: ship-float 1.8s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .ship-float, .ship-sprite:hover { animation: none; } .ship-sprite:hover { background-position: 33.333% 40.7%; } }
