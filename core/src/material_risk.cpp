@@ -87,7 +87,7 @@ double MaterialRisk::gravityFactor(const std::string& gravity) {
     for (unsigned char c : gravity) g += static_cast<char>(std::tolower(c));
     // services/risk.py GRAVITY_FACTOR — µg reference = 1.0 (worst case)
     if (g == "lunar") return 0.92;
-    if (g == "martian") return 0.95;
+    if (g == "martian" || g == "mars") return 0.95;
     if (g == "partial-gravity") return 0.94;
     if (g == "earth") return 0.85;
     return 1.0;

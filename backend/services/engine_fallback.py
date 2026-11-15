@@ -93,6 +93,7 @@ def flow_factor(flow_cms: float,
 # MaterialRisk::gravityFactor — µg is the reference worst case (1.0);
 # partial-g and Earth are protective discounts
 _GRAVITY_FACTOR = {"microgravity": 1.0, "lunar": 0.92, "martian": 0.95,
+                   "mars": 0.95,  # preset vocabulary — same regime as martian
                    "partial-gravity": 0.94, "earth": 0.85}
 
 

@@ -29,6 +29,7 @@ FALLBACK_MATERIAL = {
 # partial-g burns sit between µg and 1-g behaviour (FLARE intent):
 # slightly less risk than worst-case µg, still above Earth baseline.
 GRAVITY_FACTOR = {"microgravity": 1.0, "lunar": 0.92, "martian": 0.95,
+                  "mars": 0.95,  # preset vocabulary — same regime as martian
                   "partial-gravity": 0.94, "earth": 0.85}
 
 _model: dict | None = None
