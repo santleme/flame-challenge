@@ -22,9 +22,11 @@ type SensorMode = 'visible' | 'uv'
 
 export default function LiveChamber({
   stage = false,
+  autoBoot = true,
   children,
 }: {
   stage?: boolean
+  autoBoot?: boolean
   children?: ReactNode
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -129,13 +131,16 @@ export default function LiveChamber({
     runRef.current = run
   }, [run])
 
-  // Auto-seed boot run on mount
+  // Auto-seed boot run on mount — callers that drive runs exclusively
+  // through ignis:ui-command pass autoBoot={false} so mounting alone
+  // never fires a stream
   useEffect(() => {
+    if (!autoBoot) return
     const timer = setTimeout(() => {
       runRef.current()
     }, 250)
     return () => clearTimeout(timer)
-  }, [])
+  }, [autoBoot])
 
   const invRef = useRef(inv)
   useEffect(() => {
