@@ -125,7 +125,17 @@ export function mergeChamberState(
   if (sim.set_o2_percent != null) next.o2Pct = sim.set_o2_percent
   if (sim.set_airflow_cm_s != null) next.flowCms = sim.set_airflow_cm_s
   if (sim.set_gravity_g != null) next.gravity = gravityRegime(sim.set_gravity_g)
-  if (sim.trigger_containment != null) next.sealed = true
+  if (sim.trigger_containment != null) {
+    next.sealed = true
+    // Mirror LiveChamber's N2 purge: a nitrogen purge without an explicit
+    // O2 setpoint drops the chamber to 11.5% — keep the tracked state in
+    // sync so follow-up commands don't rerun at pre-purge oxygen.
+    const isN2Purge =
+      typeof sim.trigger_containment === 'string' &&
+      (sim.trigger_containment.toLowerCase().includes('n2') ||
+        sim.trigger_containment.toLowerCase().includes('purge'))
+    if (isN2Purge && sim.set_o2_percent == null) next.o2Pct = 11.5
+  }
   return next
 }
 

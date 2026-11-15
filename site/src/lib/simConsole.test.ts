@@ -90,6 +90,25 @@ describe('mergeChamberState', () => {
     expect(next.flowCms).toBe(0)
     expect(next.investigationId).toBe('flex-2')
   })
+
+  it('mirrors the N2 purge oxygen drop so follow-ups keep 11.5%', () => {
+    const sealed = mergeChamberState(
+      { ...base, o2Pct: 15 },
+      { trigger_containment: 'n2_purge' },
+    )
+    expect(sealed.sealed).toBe(true)
+    expect(sealed.o2Pct).toBe(11.5)
+    const followUp = mergeChamberState(sealed, { set_airflow_cm_s: 0 })
+    expect(followUp.o2Pct).toBe(11.5)
+  })
+
+  it('keeps explicit O2 when the purge carries a setpoint', () => {
+    const next = mergeChamberState(base, {
+      trigger_containment: 'n2_purge',
+      set_o2_percent: 18,
+    })
+    expect(next.o2Pct).toBe(18)
+  })
 })
 
 describe('presetToCommands', () => {
@@ -185,12 +204,12 @@ describe('sequential follow-up command retention', () => {
     expect(turn2.o2Pct).toBe(15)
     expect(turn2.flowCms).toBe(0)
 
-    // Turn 3: partial follow-up command triggering containment
+    // Turn 3: nitrogen purge drops O2 to 11.5% like the live chamber does
     const turn3 = mergeChamberState(turn2, {
       trigger_containment: 'n2_purge',
     })
     expect(turn3.investigationId).toBe('saffire')
-    expect(turn3.o2Pct).toBe(15)
+    expect(turn3.o2Pct).toBe(11.5)
     expect(turn3.flowCms).toBe(0)
     expect(turn3.sealed).toBe(true)
   })

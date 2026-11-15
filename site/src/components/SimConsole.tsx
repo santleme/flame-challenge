@@ -91,14 +91,24 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     if (sim && Object.values(sim).some((v) => v != null)) {
       const nextChamber = mergeChamberState(chamberRef.current, sim)
       // Materialize full chamber configuration so replacement LiveChamber instances
-      // in follow-up runs retain accumulated O2, airflow, and investigation settings
-      const mergedSim: SiSimulationCommands = {
-        load_preset: sim.load_preset ?? nextChamber.investigationId ?? undefined,
-        set_o2_percent: sim.set_o2_percent ?? nextChamber.o2Pct,
-        set_airflow_cm_s: sim.set_airflow_cm_s ?? nextChamber.flowCms,
-        set_gravity_g: sim.set_gravity_g ?? (GRAVITY_G[nextChamber.gravity] ?? 0),
-        trigger_containment: sim.trigger_containment ?? (nextChamber.sealed ? 'sealed' : undefined),
-      }
+      // in follow-up runs retain accumulated O2, airflow, and investigation settings.
+      // Only expand commands that were already run-triggering — a bare
+      // gravity retune must not restart the live experiment.
+      const hasRunCondition =
+        sim.load_preset != null ||
+        sim.set_o2_percent != null ||
+        sim.set_airflow_cm_s != null ||
+        sim.trigger_containment != null
+      const mergedSim: SiSimulationCommands = hasRunCondition
+        ? {
+            load_preset: sim.load_preset ?? nextChamber.investigationId ?? undefined,
+            set_o2_percent: sim.set_o2_percent ?? nextChamber.o2Pct,
+            set_airflow_cm_s: sim.set_airflow_cm_s ?? nextChamber.flowCms,
+            set_gravity_g: sim.set_gravity_g ?? (GRAVITY_G[nextChamber.gravity] ?? 0),
+            trigger_containment:
+              sim.trigger_containment ?? (nextChamber.sealed ? 'sealed' : undefined),
+          }
+        : sim
       emitSimulationCommands(mergedSim, 'sim-console', nextChamber.investigationId ?? null)
       setChamber(nextChamber)
     }
