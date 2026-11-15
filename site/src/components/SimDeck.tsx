@@ -14,6 +14,7 @@ import { emitSimulationCommands } from '../lib/simBus'
 import {
   clearInnerTarget,
   gsap,
+  navigate,
   navigateBack,
   peekInnerTarget,
   scrollToSection,
@@ -21,7 +22,7 @@ import {
 } from '../lib/scroll'
 import KeyedFlame from './KeyedFlame'
 import LiveChamber from './LiveChamber'
-import { IconArrowLeft, IconMic, IconSend } from './Icons'
+import { IconArrowLeft, IconArrowUpRight, IconMic, IconSend } from './Icons'
 import Button from './ui/Button'
 import CrewTimelinePanel, {
   type MissionOutcomeStatus,
@@ -625,6 +626,17 @@ export default function SimDeck() {
                 Ask a question, compare conditions, or describe a run in plain language.
               </p>
             </div>
+            <Button asChild variant="glass">
+              <a
+                href="#dashboard"
+                onClick={(event) => {
+                  event.preventDefault()
+                  navigate('#dashboard')
+                }}
+              >
+                View Generated Dashboards <IconArrowUpRight size={16} />
+              </a>
+            </Button>
           </div>
 
           <div

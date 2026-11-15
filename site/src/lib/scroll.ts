@@ -23,6 +23,7 @@ export function getLenis(): Lenis | null {
 /** Friendly section names -> their DOM ids. */
 const SECTION_IDS: Record<string, string> = {
   hero: 'top',
+  dashboard: 'dashboard',
   shipyard: 'vision',
 }
 
@@ -64,6 +65,10 @@ export function scrollToSection(name: string): boolean {
   }
   if (name === 'simulations') {
     navigate('#simulations')
+    return true
+  }
+  if (name === 'dashboard') {
+    navigate('#dashboard')
     return true
   }
   if (SIM_CHILDREN.has(name)) {

@@ -15,6 +15,7 @@ interface Props {
 const NAV: { label: string; href: string; className?: string }[] = [
   { label: 'vision', href: '#vision', className: 'max-lg:hidden' },
   { label: 'simulations', href: '#simulations', className: 'max-[520px]:hidden' },
+  { label: 'dashboard', href: '#dashboard', className: 'max-[700px]:hidden' },
   { label: 'psi-dataset', href: '#psi-dataset', className: 'max-[640px]:hidden' },
 ]
 
