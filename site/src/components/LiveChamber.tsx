@@ -23,10 +23,13 @@ type SensorMode = 'visible' | 'uv'
 export default function LiveChamber({
   stage = false,
   autoBoot = true,
+  bare = false,
   children,
 }: {
   stage?: boolean
   autoBoot?: boolean
+  /** canvas only — no telemetry bar, HUD controls, stage line, readout or log */
+  bare?: boolean
   children?: ReactNode
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -409,6 +412,11 @@ export default function LiveChamber({
 
   const invLabel = CHAMBER_INVESTIGATIONS.find((i) => i.id === inv)?.label ?? inv
   const isCoolFlame = frame?.coolFlame || (frame?.model === 'droplet' && frame?.regime === 2)
+
+  // bare: the embedding surface owns all chrome — we render the stream only
+  if (bare) {
+    return <canvas ref={canvasRef} className="block h-64 w-full rounded-xl sm:h-72 bg-black/20" />
+  }
 
   return (
     <section id="chamber" className={`relative scroll-mt-24 ${stage ? '' : 'px-6 pb-28 pt-6 sm:px-10 lg:px-16'}`}>

@@ -193,13 +193,13 @@ export default function SimDeck() {
 
   return (
     <div ref={rootRef} data-lenis-prevent className="fixed inset-0 z-10 flex flex-col bg-bg">
-      <div className="shell relative pt-24 sm:pt-28">
+      <div className="relative px-5 pt-24 sm:px-10 sm:pt-28">
         <KeyedFlame
           className="inset-x-0 -top-8 h-[min(40vh,320px)]"
           strength={0.3}
           src={{ hd: '/assets/saffire5_uv.mp4', sd: '/assets/saffire5_uv_sd.mp4' }}
         />
-        <header className="relative pb-2">
+        <header className="relative pb-3">
           <div data-hero className="eyebrow flex items-baseline justify-between gap-6 opacity-70">
             <Button asChild variant="glass" size="sm" className="lowercase">
               <a
@@ -216,14 +216,14 @@ export default function SimDeck() {
               ignis console — live chamber uplink
             </span>
           </div>
-          <h1 data-hero className="mt-6 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-bold leading-display tracking-tight">
+          <h1 data-hero className="mt-5 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-bold leading-display tracking-tight">
             Simulations
           </h1>
         </header>
       </div>
 
-      {/* full-bleed agent console — thread scrolls, chips + composer pin */}
-      <div className="shell flex min-h-0 flex-1 flex-col pb-5">
+      {/* edge-to-edge agent console — no centered column anywhere */}
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 sm:px-10">
         <SimConsole presets={MISSION_PRESETS} />
       </div>
     </div>

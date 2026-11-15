@@ -11,7 +11,6 @@ import {
 import { emitSimulationCommands } from '../lib/simBus'
 import {
   mergeChamberState,
-  presetToCommands,
   toolCallsFromCommands,
   type ChatMsg,
   type PresetCommandSource,
@@ -183,48 +182,20 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     }
   }
 
-  const firePreset = (p: SimPreset) => {
-    const uid = nid()
-    const tid = nid()
-    const sim = presetToCommands(p)
-    const { tools, run } = toolCallsFromCommands(sim)
-    emitSimulationCommands(sim, 'sim-console', p.investigationId)
-    setChamber((s) => mergeChamberState(s, sim))
-    stickRef.current = true
-    setMsgs((ms) => [
-      ...ms,
-      { kind: 'user', id: uid, text: p.title },
-      {
-        kind: 'agent',
-        id: tid,
-        pending: false,
-        tools,
-        briefing: p.description,
-        action: `mission profile — ${p.outcomeStatus.toLowerCase()}`,
-        run,
-        mode: 'preset',
-        ms: null,
-      },
-    ])
-  }
-
   let liveTurnId = -1
   for (const m of msgs) {
     if (m.kind === 'agent' && m.run) liveTurnId = m.id
   }
-
-  const chipLabel = (t: string) =>
-    t.replace(/^(Historical Crisis|Guided Scenario):\s*/i, '')
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-ink/15"
       >
-        <div className="flex flex-col gap-6 py-4 pr-1">
-          <div className="flex items-center justify-between font-mono text-micro uppercase tracking-label text-ink/50">
+        <div className="flex flex-col gap-7 py-4">
+          <div className="flex items-center justify-between font-mono text-micro uppercase tracking-label text-ink/45">
             <span>ignis console — live chamber uplink</span>
             <span className={engine === 'cpp' ? 'text-emerald-600 dark:text-emerald-400' : ''}>
               engine {engine === 'cpp' ? 'c++ · 30 hz' : 'local mirror'}
@@ -232,14 +203,12 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           </div>
 
           {msgs.length === 0 && (
-            <div className="py-10 text-center">
-              <p className="m-0 font-display text-xl font-bold text-ink">
-                Describe a scenario — or pick an envelope below.
-              </p>
-              <p className="mx-auto mt-3 max-w-xl text-tiny leading-relaxed text-ink/60">
-                Ignis translates plain language into chamber parameters and streams
-                real combustion runs from the compiled physics core. Voice works too —
-                hold ◉ in the composer.
+            <div className="py-8">
+              <p className="m-0 max-w-2xl text-body leading-copy text-ink/80">
+                Describe a scenario — an atmosphere, a material, a historical
+                fire — and Ignis translates it into chamber parameters, then
+                streams a real combustion run from the compiled physics core.
+                Voice works too: hold ◉ below.
               </p>
             </div>
           )}
@@ -248,7 +217,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
             m.kind === 'user' ? (
               <div
                 key={m.id}
-                className="ml-auto max-w-[80%] rounded-2xl rounded-br-md border border-accent/40 bg-accent/15 px-4 py-2.5 text-body leading-relaxed text-ink"
+                className="ml-auto max-w-[70%] rounded-2xl rounded-br-md border border-accent/30 bg-accent/10 px-4 py-2.5 text-body leading-relaxed text-ink"
               >
                 {m.text}
               </div>
@@ -260,18 +229,6 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       </div>
 
       <div className="pt-3">
-        <div className="mb-2.5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-          {presets.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => firePreset(p)}
-              className="flex-none rounded-full border border-accent/40 bg-accent/5 px-3.5 py-1.5 font-mono text-tiny lowercase text-ink/75 transition-colors hover:border-accent hover:bg-accent/15 hover:text-ink"
-            >
-              {chipLabel(p.title)}
-            </button>
-          ))}
-        </div>
         <Composer onSend={sendText} onVoice={sendVoice} />
       </div>
     </div>

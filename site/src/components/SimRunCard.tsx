@@ -4,9 +4,9 @@ import { runOutcome, type RunRequest } from '../lib/simConsole'
 import LiveChamber from './LiveChamber'
 
 /**
- * A run inside an agent turn. While `live`, the card hosts the real
- * LiveChamber (it applies ignis:ui-command retunes itself); once a newer
- * run supersedes it the card freezes into a stat summary of the last
+ * A run inside an agent turn — a bare LiveChamber canvas wrapped in the
+ * card's own chrome (preset + status + stats). Once a newer run
+ * supersedes it, the card freezes into a one-line summary of the last
  * frame it saw on ignis:sim-frame.
  */
 export default function SimRunCard({
@@ -35,41 +35,71 @@ export default function SimRunCard({
     }
   }, [live])
 
-  if (live) {
+  if (!live) {
     return (
-      <div className="relative overflow-hidden rounded-3xl border border-edge p-3 sm:p-4">
-        <LiveChamber stage autoBoot={false} />
-        {done && lastFrame && (
-          <span className="absolute right-3 top-10 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 py-1 font-mono text-micro uppercase tracking-label text-emerald-600 backdrop-blur dark:text-emerald-300">
-            {runOutcome(lastFrame)}
+      <div className="rounded-xl border border-edge bg-ink/[0.03] px-4 py-3 dark:bg-white/[0.03]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-tiny text-ink/70">
+          <span className="font-semibold">{run.presetId ?? 'chamber run'}</span>
+          {lastFrame ? (
+            <>
+              <span>t {lastFrame.tSec.toFixed(1)}s</span>
+              <span>o₂ {lastFrame.o2Pct.toFixed(1)}%</span>
+              {lastFrame.spreadRateCms != null && (
+                <span>{lastFrame.spreadRateCms.toFixed(2)} cm/s</span>
+              )}
+            </>
+          ) : (
+            <span className="opacity-60">run superseded</span>
+          )}
+          <span className="ml-auto rounded-full border border-edge px-2.5 py-0.5 text-micro uppercase tracking-label">
+            {lastFrame ? runOutcome(lastFrame) : 'done'}
           </span>
-        )}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-edge bg-ink/[0.03] px-4 py-3 dark:bg-white/[0.03]">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-tiny text-ink/70">
-        <span className="font-semibold">{run.presetId ?? 'chamber run'}</span>
-        {lastFrame ? (
-          <>
-            <span>t {lastFrame.tSec.toFixed(1)}s</span>
-            <span>o₂ {lastFrame.o2Pct.toFixed(1)}%</span>
-            {lastFrame.spreadRateCms != null && (
-              <span>{lastFrame.spreadRateCms.toFixed(2)} cm/s</span>
-            )}
-            {lastFrame.heatReleaseW != null && (
-              <span>{lastFrame.heatReleaseW.toFixed(2)} w</span>
-            )}
-          </>
-        ) : (
-          <span className="opacity-60">run superseded</span>
-        )}
-        <span className="ml-auto rounded-full border border-edge px-2.5 py-0.5 text-micro uppercase tracking-label">
-          {lastFrame ? runOutcome(lastFrame) : 'done'}
+    <div className="overflow-hidden rounded-xl border border-edge bg-white/60 shadow-sm dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between border-b border-edge/60 px-4 py-2.5">
+        <span className="font-mono text-micro uppercase tracking-label text-ink/55">
+          chamber run · {run.presetId ?? 'custom'}
+        </span>
+        <span
+          className={`rounded-full px-2.5 py-0.5 font-mono text-micro uppercase tracking-label ${
+            done
+              ? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              : 'border border-accent/40 bg-accent/10 text-accent'
+          }`}
+        >
+          {done && lastFrame ? runOutcome(lastFrame) : '● live'}
         </span>
       </div>
+
+      <div className="p-3">
+        <LiveChamber bare autoBoot={false} />
+      </div>
+
+      {lastFrame && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-edge/60 px-4 py-2.5 font-mono text-micro lowercase text-ink/60">
+          <span>t {lastFrame.tSec.toFixed(1)}s</span>
+          <span>o₂ {lastFrame.o2Pct.toFixed(1)}%</span>
+          {lastFrame.spreadRateCms != null && (
+            <span>spread {lastFrame.spreadRateCms.toFixed(2)} cm/s</span>
+          )}
+          {lastFrame.frontPosCm != null && (
+            <span>front {lastFrame.frontPosCm.toFixed(1)} cm</span>
+          )}
+          {lastFrame.heatReleaseW != null && (
+            <span>{lastFrame.heatReleaseW.toFixed(2)} w</span>
+          )}
+          {lastFrame.coolFlame && (
+            <span className="font-semibold text-amber-600 dark:text-amber-400">
+              cool flame
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

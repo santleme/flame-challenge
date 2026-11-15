@@ -55,7 +55,7 @@ export default function Composer({
         if (held >= MIN_CLIP_MS && chunksRef.current.length) {
           onVoice(new Blob(chunksRef.current, { type: rec.mimeType }))
         } else if (held < MIN_CLIP_MS) {
-          setHint('hold ◉ to talk')
+          setHint('hold the mic to talk')
         }
       }
       recRef.current = rec
@@ -82,10 +82,11 @@ export default function Composer({
 
   return (
     <div>
-      <div className="panel-85 flex items-center gap-2.5 rounded-2xl border border-edge p-2 pl-4 shadow-lg backdrop-blur-xl">
+      <div className="flex items-center gap-2 rounded-2xl border border-edge bg-white/70 p-2 pl-4 shadow-sm backdrop-blur transition-colors focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/20 dark:bg-white/[0.04]">
         {recording ? (
-          <span className="flex-1 font-mono text-tiny lowercase text-red-500">
-            ● recording {elapsed}s — release to send
+          <span className="flex flex-1 items-center gap-2 font-mono text-tiny text-red-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+            recording {elapsed}s — release to send
           </span>
         ) : (
           <input
@@ -96,37 +97,39 @@ export default function Composer({
               if (e.key === 'Enter') send()
             }}
             disabled={disabled}
-            placeholder="Ask, or hold ◉ to talk…"
-            className="flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink/40"
+            placeholder="Describe a scenario, or hold the mic to talk…"
+            className="flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink/35"
           />
         )}
         <button
           type="button"
+          title="hold to talk"
           aria-label="hold to talk"
           onPointerDown={startRecording}
           onPointerUp={stopRecording}
           onPointerLeave={stopRecording}
           onPointerCancel={stopRecording}
-          className={`flex h-9 w-9 flex-none items-center justify-center rounded-full border transition-colors ${
+          className={`flex h-9 w-9 flex-none items-center justify-center rounded-full transition-colors ${
             recording
-              ? 'border-red-500 bg-red-500/15 text-red-500'
-              : 'border-accent/60 bg-accent/10 text-accent hover:bg-accent/20'
+              ? 'bg-red-500/15 text-red-500'
+              : 'text-ink/50 hover:bg-ink/5 hover:text-ink'
           }`}
         >
-          <IconMic size={15} />
+          <IconMic size={16} />
         </button>
         <button
           type="button"
+          title="send"
           aria-label="send"
           onClick={send}
           disabled={disabled}
-          className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-ink text-bg transition-opacity hover:opacity-85 disabled:opacity-40"
+          className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-ink text-bg transition-opacity hover:opacity-80 disabled:opacity-40"
         >
           <IconSend size={14} />
         </button>
       </div>
       {hint && (
-        <p className="mt-1.5 pl-2 font-mono text-micro lowercase text-ink/55">{hint}</p>
+        <p className="mt-1.5 pl-2 font-mono text-micro lowercase text-ink/50">{hint}</p>
       )}
     </div>
   )
