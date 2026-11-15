@@ -102,3 +102,19 @@ def test_curve_points_carry_band():
     c = risk.curve("pmma", 10.0, 20.0, step=5.0)
     for p in c["points"]:
         assert 0.0 <= p["lower"] <= p["riskIndex"] <= p["upper"] <= 1.0
+
+
+# ---- gravity vocabulary ----
+
+def test_mars_alias_matches_martian():
+    """site presets spell the regime "mars"; every engine mirror must
+    resolve it to the same factor as "martian" or online/offline risk
+    scores diverge silently."""
+    for material, o2, flow in (("pmma", 25.0, 5.0), ("heptane", 16.0, 0.0)):
+        mars = risk.risk_index(material, o2, flow, "mars")
+        martian = risk.risk_index(material, o2, flow, "martian")
+        assert mars["breakdown"]["gravityFactor"] == 0.95
+        assert mars["riskIndex"] == martian["riskIndex"]
+        assert risk.predict_risk(
+            risk._load(), material, o2, flow, "mars"
+        ) == risk.predict_risk(risk._load(), material, o2, flow, "martian")

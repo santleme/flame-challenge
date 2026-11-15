@@ -205,9 +205,13 @@ function RiskCompare({ presets, activeId }: { presets: MissionPreset[]; activeId
     [presets],
   )
   // active curve draws last so it sits on top of the pile
-  const ordered = activeId
-    ? [...curves.filter((c) => c.id !== activeId), ...curves.filter((c) => c.id === activeId)]
-    : curves
+  const ordered = useMemo(
+    () =>
+      activeId
+        ? [...curves.filter((c) => c.id !== activeId), ...curves.filter((c) => c.id === activeId)]
+        : curves,
+    [curves, activeId],
+  )
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
@@ -227,8 +231,12 @@ function RiskCompare({ presets, activeId }: { presets: MissionPreset[]; activeId
             opacity={dim ? 0.18 : isActive ? 1 : 0.6}
             pointerEvents="all"
             style={{ transition: 'opacity 200ms', cursor: 'pointer' }}
+            tabIndex={0}
+            aria-label={`${c.name}: ${Math.round(c.risk * 100)}% risk`}
             onPointerEnter={() => setHover(c.id)}
             onPointerLeave={() => setHover(null)}
+            onFocus={() => setHover(c.id)}
+            onBlur={() => setHover(null)}
           >
             <title>{`${c.name}: ${Math.round(c.risk * 100)}% risk`}</title>
             <path d={c.d} fill="none" stroke={c.accent} strokeWidth={isActive ? 3 : 1.8} strokeLinecap="round" />

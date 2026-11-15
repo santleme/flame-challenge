@@ -95,9 +95,12 @@ export default function App() {
     // warm the lazy overlay chunks once the landing is up — judges get
     // zero-spinner transitions without paying for the data tables upfront
     const prefetch = () => {
-      void import('./components/PsiDataset')
-      void import('./components/SimDeck')
-      void import('./components/Dashboard')
+      // swallow failures — the lazy() import retries on navigation anyway,
+      // so a dropped chunk only costs the judge one spinner, not a console
+      // full of unhandled rejections
+      void import('./components/PsiDataset').catch(() => {})
+      void import('./components/SimDeck').catch(() => {})
+      void import('./components/Dashboard').catch(() => {})
     }
     if ('requestIdleCallback' in window) {
       const id = requestIdleCallback(prefetch, { timeout: 5000 })

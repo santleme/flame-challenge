@@ -51,9 +51,13 @@ the cold-start story below doesn't apply.
 
 ## Step 3 — frontend on Vercel
 
-1. https://vercel.com/new → import the repo → **Root Directory: `site`**
-   (framework detects as Vite via `site/vercel.json`; SPA rewrites are
-   already configured).
+1. https://vercel.com/new → import the repo → leave **Root Directory at
+   the repo root** (the default). The root `vercel.json` runs
+   `cd site && npm ci && npm run build` and serves `site/dist`; the root
+   `.vercelignore` trims the upload so `shared/calibrated-data` still
+   reaches the build (the risk mirror imports it). Do not set the root
+   directory to `site/` — that switches to `site/vercel.json` and skips
+   the monorepo layout the site depends on.
 2. **Environment Variables**:
 
 | Variable | Value |
