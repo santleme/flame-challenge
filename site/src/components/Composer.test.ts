@@ -54,6 +54,8 @@ describe('parseFlameParameters', () => {
       o2Pct: 21,
       airflowCms: 0.5,
       coolFlame: false,
+      enriched: false,
+      suppressed: false,
     })
   })
 
