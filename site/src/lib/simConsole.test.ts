@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SiChamberState, SiSimulationCommands } from './api'
+import type { SiChamberState } from './api'
 import {
   mergeChamberState,
   presetToCommands,

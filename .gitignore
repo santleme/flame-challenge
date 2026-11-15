@@ -53,3 +53,4 @@ build/
 
 # Agent scratch
 .agents/
+.superpowers/

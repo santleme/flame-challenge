@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { gsap, navigateBack } from '../lib/scroll'
 import KeyedFlame from './KeyedFlame'
 import { IconArrowLeft } from './Icons'
 import Button from './ui/Button'
+import SimConsole from './SimConsole'
 import type { MissionOutcomeStatus } from './CrewTimelinePanel'
 
-interface MissionPreset {
+export interface MissionPreset {
   id: string
   title: string
   tag: string
@@ -20,7 +21,7 @@ interface MissionPreset {
   outcomeStatus: MissionOutcomeStatus
 }
 
-const MISSION_PRESETS: MissionPreset[] = [
+export const MISSION_PRESETS: MissionPreset[] = [
   {
     id: 'apollo-1-crisis',
     title: 'Historical Crisis: Apollo 1',
@@ -179,7 +180,6 @@ const MISSION_PRESETS: MissionPreset[] = [
 
 export default function SimDeck() {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [activeMission, setActiveMission] = useState<MissionPreset>(MISSION_PRESETS[0])
 
   useEffect(() => {
     const root = rootRef.current
@@ -191,19 +191,15 @@ export default function SimDeck() {
     return () => ctx.revert()
   }, [])
 
-  // selecting an envelope is a visual pick only — it marks the active
-  // mission; the run/report pipeline intentionally lives outside this view
-  const loadMissionPreset = (preset: MissionPreset) => setActiveMission(preset)
-
   return (
-    <div ref={rootRef} data-lenis-prevent className="fixed inset-0 z-10 overflow-y-auto overscroll-contain bg-bg">
-      <div className="shell relative pb-24 pt-28 sm:pt-32">
+    <div ref={rootRef} data-lenis-prevent className="fixed inset-0 z-10 flex flex-col bg-bg">
+      <div className="shell relative pt-24 sm:pt-28">
         <KeyedFlame
-          className="inset-x-0 -top-8 h-[min(54vh,460px)]"
+          className="inset-x-0 -top-8 h-[min(40vh,320px)]"
           strength={0.3}
           src={{ hd: '/assets/saffire5_uv.mp4', sd: '/assets/saffire5_uv_sd.mp4' }}
         />
-        <header className="relative">
+        <header className="relative pb-2">
           <div data-hero className="eyebrow flex items-baseline justify-between gap-6 opacity-70">
             <Button asChild variant="glass" size="sm" className="lowercase">
               <a
@@ -217,79 +213,18 @@ export default function SimDeck() {
               </a>
             </Button>
             <span className="hidden cursor-default transition-colors duration-300 hover:text-accent hover:opacity-100 sm:inline">
-              guided mission envelopes
+              ignis console — live chamber uplink
             </span>
           </div>
-          <h1 data-hero className="mt-8 font-display text-[clamp(2.4rem,6vw,4.6rem)] font-bold leading-display tracking-tight">
+          <h1 data-hero className="mt-6 font-display text-[clamp(2.2rem,5vw,3.8rem)] font-bold leading-display tracking-tight">
             Simulations
           </h1>
-          <p data-hero className="mt-10 max-w-2xl text-body leading-[1.85] opacity-80">
-            Test real-world mission atmospheres, partial-gravity regimes, and historical fire crises. The copilot
-            cross-references 30 years of NASA PSI data and streams physical combustion runs in real time.
-          </p>
         </header>
+      </div>
 
-        {/* GUIDED MISSION PRESETS CARDS (1-CLICK EXECUTION) */}
-        <section className="rounded-shell panel-85 relative mt-20 p-6 shadow-xl backdrop-blur-2xl sm:mt-24 sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-edge pb-4">
-            <div>
-              <span className="card-label">
-                Guided Scenarios &amp; Historical Crises
-              </span>
-              <h2 className="mt-1 font-display text-xl font-bold sm:text-2xl">
-                1-Click Mission Envelopes
-              </h2>
-            </div>
-            <span className="hidden font-mono text-tiny opacity-60 sm:inline">Click any card to preview the mission</span>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {MISSION_PRESETS.map((preset) => {
-              const isActive = activeMission.id === preset.id
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => loadMissionPreset(preset)}
-                  className={`group flex flex-col justify-between rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg ${
-                    isActive
-                      ? 'border-accent bg-white/60 shadow-md dark:bg-white/[0.08]'
-                      : 'border-edge bg-white/30 dark:bg-white/[0.03] hover:border-accent/50'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-tiny font-semibold" style={{ color: preset.accent }}>
-                        {preset.tag}
-                      </span>
-                      {isActive && (
-                        <span className="rounded bg-accent/20 px-2 py-1 font-mono text-micro font-bold text-accent">
-                          ACTIVE
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mt-2 text-base font-bold group-hover:text-accent transition-colors">
-                      {preset.title}
-                    </h3>
-                    <p className="mt-2 text-tiny leading-relaxed opacity-75">{preset.description}</p>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-edge pt-2 text-tiny font-mono opacity-70">
-                    <span>
-                      {preset.investigationId} · {preset.o2Pct}% O₂
-                    </span>
-                    <span className="group-hover:translate-x-0.5 transition-transform">Select →</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        <div className="relative mt-8 flex justify-end">
-          <Button variant="glass" onClick={navigateBack}>
-            Back to overview <IconArrowLeft size={16} />
-          </Button>
-        </div>
+      {/* full-bleed agent console — thread scrolls, chips + composer pin */}
+      <div className="shell flex min-h-0 flex-1 flex-col pb-5">
+        <SimConsole presets={MISSION_PRESETS} />
       </div>
     </div>
   )
