@@ -240,7 +240,11 @@ export default function LiveChamber({
       ctx.font = '14px monospace'
       ctx.fillStyle = ink
       ctx.textAlign = 'center'
-      ctx.fillText(st === 'streaming' ? 'igniting physical chamber…' : 'chamber stand by', cw / 2, ch / 2 + 3)
+      ctx.fillText(
+        st === 'offline' ? 'engine offline' : st === 'streaming' ? 'igniting physical chamber…' : 'chamber stand by',
+        cw / 2,
+        ch / 2 + 3,
+      )
       ctx.restore()
       return
     }

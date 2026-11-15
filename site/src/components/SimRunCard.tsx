@@ -18,6 +18,7 @@ export default function SimRunCard({
 }) {
   const [lastFrame, setLastFrame] = useState<ChamberState | null>(null)
   const [done, setDone] = useState(false)
+  const [failed, setFailed] = useState<'offline' | 'rejected' | null>(null)
 
   useEffect(() => {
     if (!live) return
@@ -29,14 +30,21 @@ export default function SimRunCard({
     }
     const onOffline = () => {
       setDone(true)
+      setFailed('offline')
+    }
+    const onRejected = () => {
+      setDone(true)
+      setFailed('rejected')
     }
     window.addEventListener('ignis:sim-frame', onFrame)
     window.addEventListener('ignis:chamber-complete', onComplete)
     window.addEventListener('ignis:chamber-offline', onOffline)
+    window.addEventListener('ignis:chamber-command-error', onRejected)
     return () => {
       window.removeEventListener('ignis:sim-frame', onFrame)
       window.removeEventListener('ignis:chamber-complete', onComplete)
       window.removeEventListener('ignis:chamber-offline', onOffline)
+      window.removeEventListener('ignis:chamber-command-error', onRejected)
     }
   }, [live])
 
@@ -77,7 +85,13 @@ export default function SimRunCard({
               : 'border border-accent/40 bg-accent/10 text-accent'
           }`}
         >
-          {done ? (lastFrame ? runOutcome(lastFrame) : 'engine offline') : '● live'}
+          {done
+            ? lastFrame
+              ? runOutcome(lastFrame)
+              : failed === 'rejected'
+                ? 'run rejected'
+                : 'engine offline'
+            : '● live'}
         </span>
       </div>
 

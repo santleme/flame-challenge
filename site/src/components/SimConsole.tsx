@@ -11,6 +11,7 @@ import { emitSimulationCommands } from '../lib/simBus'
 import {
   GRAVITY_G,
   mergeChamberState,
+  presetToCommands,
   toolCallsFromCommands,
   type ChatMsg,
   type PresetCommandSource,
@@ -151,6 +152,14 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     ms: null,
   })
 
+  // deterministic preset chips — the selection path the envelopes lost
+  const pickPreset = (preset: SimPreset) => {
+    const sim = presetToCommands(preset)
+    const nextChamber = mergeChamberState(chamberRef.current, sim)
+    setChamber(nextChamber)
+    emitSimulationCommands(sim, 'sim-console', preset.investigationId ?? null)
+  }
+
   const sendText = async (text: string) => {
     const uid = nid()
     const tid = nid()
@@ -251,6 +260,34 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           )}
         </div>
       </div>
+
+      {presets.length > 0 && (
+        <div
+          role="group"
+          aria-label="Mission presets"
+          className="mx-auto flex w-full max-w-3xl gap-2 overflow-x-auto pb-1 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {presets.slice(0, 8).map((p) => {
+            const isActive = chamber.investigationId === p.investigationId
+            return (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={isActive}
+                disabled={busy}
+                onClick={() => pickPreset(p)}
+                className={`flex-none whitespace-nowrap rounded-full border px-3 py-1.5 font-mono text-tiny font-semibold lowercase tracking-label transition-[border-color,color,background-color,transform] duration-150 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait disabled:opacity-50 motion-reduce:transform-none ${
+                  isActive
+                    ? 'border-accent/70 bg-accent/10 text-accent'
+                    : 'border-edge/60 bg-white/50 text-ink/65 hover:border-edge hover:text-ink dark:bg-white/[0.04]'
+                }`}
+              >
+                {p.title.replace(/^(historical crisis|guided scenario|mission):\s*/i, '')}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-3xl pt-3">
         <Composer
