@@ -9,6 +9,7 @@ import {
   type SiSimulationCommands,
 } from '../lib/api'
 import { emitSimulationCommands } from '../lib/simBus'
+import { generateDashboard } from '../lib/generatedDashboards'
 import { navigate } from '../lib/scroll'
 import {
   GRAVITY_G,
@@ -88,7 +89,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160
   }
 
-  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false) => {
+  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '') => {
     const sim = res.simulation_commands ?? null
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
@@ -115,6 +116,9 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           }
         : sim
       emitSimulationCommands(mergedSim, 'sim-console', nextChamber.investigationId ?? null)
+      // a run-triggering turn produces a mission report — the dashboard
+      // panel listens on 'ignis:dashboard-generated' and shows it as '· live'
+      if (hasRunCondition) generateDashboard(prompt, res, undefined, nextChamber)
       setChamber(nextChamber)
     }
     // when the copilot points somewhere (generated dashboards, a section),
@@ -216,7 +220,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const res =
       (await siChat(text, chamberRef.current)) ??
       synthesizeLocalSiResponse(text, chamberRef.current)
-    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav)
+    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text)
   }
   sendTextRef.current = sendText
 
@@ -239,7 +243,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       return out
     })
     if (res) {
-      applyResponse(res, tid, performance.now() - t0)
+      applyResponse(res, tid, performance.now() - t0, false, transcript)
     } else {
       setMsgs((ms) =>
         ms.map((m) =>
