@@ -30,7 +30,24 @@ export default function Composer({
   const holdingRef = useRef(false)
   const cancelRecordingRef = useRef(false)
   const [pulse, setPulse] = useState({ id: 0, position: 0.5 })
-  const flameParameters = parseFlameParameters(text, flameDefaults)
+  const [regime, setRegime] = useState<'auto' | 'earth' | 'micro' | 'cool'>('auto')
+  const formRef = useRef<HTMLFormElement>(null)
+  const glowRef = useRef<HTMLDivElement>(null)
+  const parsedParameters = parseFlameParameters(text, flameDefaults)
+  const flameParameters: FlameParameters =
+    regime === 'earth'
+      ? { ...parsedParameters, gravityG: 1, coolFlame: false }
+      : regime === 'micro'
+        ? { ...parsedParameters, gravityG: 0, coolFlame: false }
+        : regime === 'cool'
+          ? { ...parsedParameters, coolFlame: true }
+          : parsedParameters
+
+  const cycleRegime = () => {
+    setRegime((current) =>
+      current === 'auto' ? 'earth' : current === 'earth' ? 'micro' : current === 'micro' ? 'cool' : 'auto',
+    )
+  }
 
   const stopTimer = () => {
     if (timerRef.current != null) {
@@ -128,12 +145,24 @@ export default function Composer({
   }
 
   return (
-    <div className="relative w-full">
-      <MathematicalFlameField parameters={flameParameters} pulse={pulse} />
-      <div aria-hidden="true" className="pointer-events-none absolute -top-[19px] right-1 z-20 rounded-t-md border border-edge/35 bg-[#F4F3EE]/90 px-2 py-0.5 font-mono text-[9px] tracking-[0.015em] text-ink/55 backdrop-blur-sm">
-        g: {flameParameters.gravityG.toFixed(2)}g&nbsp; | &nbsp;O₂: {Math.round(flameParameters.o2Pct)}%&nbsp; | &nbsp;Re: {Math.round(flameParameters.airflowCms * 42)}&nbsp; | &nbsp;solver: curl-eulerian-2d
-      </div>
-      <form
+    <div className="relative w-full overflow-visible">
+      <MathematicalFlameField parameters={flameParameters} pulse={pulse} barRef={formRef} glowRef={glowRef} />
+      <button
+        type="button"
+        onClick={cycleRegime}
+        title="Cycle flame regime: auto → 1g earth → 0g microgravity → cool flame"
+        className="absolute -top-[19px] right-1 z-20 cursor-pointer rounded-t-md border border-edge/35 bg-[#F4F3EE]/90 px-2 py-0.5 font-mono text-[9px] tracking-[0.015em] text-ink/55 backdrop-blur-sm transition-colors hover:border-accent/60 hover:text-ink/80"
+      >
+        {`g: ${flameParameters.gravityG.toFixed(2)}g\u00a0 | \u00a0O₂: ${Math.round(flameParameters.o2Pct)}%\u00a0 | \u00a0Re: ${Math.round(flameParameters.airflowCms * 42)}\u00a0 | \u00a0solver: ${flameParameters.coolFlame ? 'cool-flame-720K' : 'curl-eulerian-2d'}`}
+      </button>
+      <div className="relative">
+        <div
+          ref={glowRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-[26px]"
+        />
+        <form
+        ref={formRef}
         onSubmit={(event) => {
           event.preventDefault()
           send()
@@ -235,7 +264,8 @@ export default function Composer({
             <IconSend size={17} />
           </button>
         </div>
-      </form>
+        </form>
+      </div>
 
       <div className="min-h-6 px-3 pt-1.5" aria-live="polite">
         {hint && <p className="m-0 font-chat-sans text-sm leading-5 text-ink/65">{hint}</p>}

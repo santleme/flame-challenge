@@ -26,9 +26,11 @@ export function parseFlameParameters(
   else if (explicitG) gravityG = Math.min(1.5, Number(explicitG[1]))
   else if (/\bearth|terrestrial|terra\b/i.test(lower)) gravityG = 1
 
-  const flow = lower.match(/(?:airflow|flow|ventila(?:tion|ção|cao)?|fluxo|\bwind)\D{0,16}(\d+(?:\.\d+)?)\s*(?:cm\/?s|cm\/sec)?/i)
-  if (flow) airflowCms = Math.min(80, Number(flow[1]))
-  else if (/\bairflow|ventila(?:tion|ção|cao)|fluxo\b/i.test(lower)) airflowCms = Math.max(8, airflowCms)
+  const unitFlow = lower.match(/(\d+(?:\.\d+)?)\s*(?:cm\/?s\b|cm\/sec\b)/i)
+  const keywordFlow = lower.match(/(?:airflow|flow|ventila(?:tion|ção|cao)?|fluxo|\bwind)\D{0,8}(\d+(?:\.\d+)?)/i)
+  if (unitFlow) airflowCms = Math.min(80, Math.max(0, Number(unitFlow[1])))
+  else if (keywordFlow) airflowCms = Math.min(80, Math.max(0, Number(keywordFlow[1])))
+  else if (/\b(?:airflow|ventila(?:tion|ção|cao)?|fluxo|wind)\b/i.test(lower)) airflowCms = Math.max(8, airflowCms)
 
   return {
     gravityG: Math.min(1.5, Math.max(0, gravityG)),
@@ -38,93 +40,143 @@ export function parseFlameParameters(
   }
 }
 
-interface FlamePulse {
+interface EdgePulse {
+  /** Angular position on the perimeter where the keystroke ignited. */
+  angle: number
+  at: number
+  power: number
+}
+
+interface Ember {
   x: number
   y: number
-  power: number
-  at: number
+  vx: number
+  vy: number
+  life: number
+  maxLife: number
+  size: number
+  seed: number
 }
 
 interface MathematicalFlameFieldProps {
   parameters: FlameParameters
   pulse: { id: number; position: number }
+  /** The pill the flame conforms to — measured every frame for the SDF. */
+  barRef: React.RefObject<HTMLElement | null>
+  /** Element that receives the dynamic thermal box-shadow. */
+  glowRef: React.RefObject<HTMLElement | null>
 }
 
-const W = 112
-const H = 58
-const count = W * H
-const BLACKBODY_RGB = Array.from({ length: 256 }, (_, i) => {
-  const temperature = (300 + (i / 255) * 2700) / 100
-  const red = temperature <= 66 ? 255 : 329.6987 * (temperature - 60) ** -0.1332
-  const green = temperature <= 66
-    ? 99.4708 * Math.log(temperature) - 161.1196
-    : 288.1222 * (temperature - 60) ** -0.0755
-  const blue = temperature >= 66
-    ? 255
-    : temperature <= 19
-      ? 0
-      : 138.5177 * Math.log(temperature - 10) - 305.0448
-  return [red, green, blue].map((channel) => Math.max(0, Math.min(255, channel)))
-})
+const CELL = 4 // CSS px per simulation cell
+const MAX_W = 240
+const MAX_H = 96
+const MAX_EMBERS = 40
 
-/** Low-resolution Eulerian temperature field, upscaled by the browser. */
+const TAU = Math.PI * 2
+
+function hash2(x: number, y: number) {
+  const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453
+  return h - Math.floor(h)
+}
+
+function vnoise(x: number, y: number) {
+  const xi = Math.floor(x)
+  const yi = Math.floor(y)
+  const fx = x - xi
+  const fy = y - yi
+  const ux = fx * fx * (3 - 2 * fx)
+  const uy = fy * fy * (3 - 2 * fy)
+  const a = hash2(xi, yi)
+  const b = hash2(xi + 1, yi)
+  const c = hash2(xi, yi + 1)
+  const d = hash2(xi + 1, yi + 1)
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy
+}
+
+/** 2-octave FBM in [0,1]. */
+function fbm(x: number, y: number) {
+  return (
+    vnoise(x, y) * 0.62 +
+    vnoise(x * 2.13 + 17.7, y * 2.13 - 9.2) * 0.38
+  )
+}
+
+/**
+ * Flame sheath conformal to the typing bar: per-pixel we evaluate
+ * d = sdRoundedBox(p + warp(p, t), barSize, radius) — the warp is animated
+ * curl-FBM — and map the signed distance to a thermal ramp. The canvas is
+ * a 36px margin around the pill and sits *behind* it, so the inner band
+ * (d < 0) reads as an inset glow through the translucent white surface.
+ */
 export default function MathematicalFlameField({
   parameters,
   pulse,
+  barRef,
+  glowRef,
 }: MathematicalFlameFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const emberCanvasRef = useRef<HTMLCanvasElement>(null)
   const paramsRef = useRef(parameters)
-  const initialParamsRef = useRef(parameters)
   const pulseRef = useRef(pulse)
-  const pointerRef = useRef({ x: 0.5, y: 0.58, proximity: 0 })
   const lastPulseRef = useRef(pulse)
+  const pointerRef = useRef({ x: -9999, y: -9999, vx: 0, vy: 0, proximity: 0 })
 
   paramsRef.current = parameters
   pulseRef.current = pulse
 
   useEffect(() => {
     const canvas = canvasRef.current
+    const emberCanvas = emberCanvasRef.current
     const ctx = canvas?.getContext('2d', { alpha: true })
-    if (!canvas || !ctx) return
+    const emberCtx = emberCanvas?.getContext('2d', { alpha: true })
+    if (!canvas || !ctx || !emberCanvas || !emberCtx) return
 
-    canvas.width = W
-    canvas.height = H
-    const image = ctx.createImageData(W, H)
-    const temperature = new Float32Array(count)
-    const nextTemperature = new Float32Array(count)
-    const vx = new Float32Array(count)
-    const vy = new Float32Array(count)
-    const curl = new Float32Array(count)
-    const curlMagnitude = new Float32Array(count)
-    const imageData = image.data
+    let Wg = 0
+    let Hg = 0
+    let image: ImageData | null = null
+    let imageData: Uint8ClampedArray | null = null
     let raf = 0
     let last = 0
     let simTime = 0
     let visible = true
+    let glowLevel = 0
     const active = {
-      gravityG: initialParamsRef.current.gravityG,
-      o2Pct: initialParamsRef.current.o2Pct,
-      airflowCms: initialParamsRef.current.airflowCms,
-      coolFlame: initialParamsRef.current.coolFlame ? 1 : 0,
+      gravityG: parameters.gravityG,
+      o2Pct: parameters.o2Pct,
+      airflowCms: parameters.airflowCms,
+      coolFlame: parameters.coolFlame ? 1 : 0,
     }
-    const pulses: FlamePulse[] = []
+    const pulses: EdgePulse[] = []
+    const embers: Ember[] = []
     const reducedMotion =
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
         : { matches: false }
 
+    const rawPointer = { x: 0, y: 0, t: 0, has: false }
     const onPointer = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
-      if (rect.width && rect.height) {
-        const outsideX = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right)
-        const outsideY = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom)
-        const distance = Math.hypot(outsideX, outsideY)
-        pointerRef.current = {
-          x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-          y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
-          proximity: Math.max(0, 1 - distance / 190),
-        }
-      }
+      if (!rect.width || !rect.height) return
+      const now = performance.now()
+      const dt = Math.max(16, now - rawPointer.t) / 1000
+      const ivx = rawPointer.has ? (event.clientX - rawPointer.x) / dt : 0
+      const ivy = rawPointer.has ? (event.clientY - rawPointer.y) / dt : 0
+      rawPointer.x = event.clientX
+      rawPointer.y = event.clientY
+      rawPointer.t = now
+      rawPointer.has = true
+      const p = pointerRef.current
+      const mx = event.clientX - rect.left
+      const my = event.clientY - rect.top
+      const outsideX = Math.max(-mx, 0, mx - rect.width)
+      const outsideY = Math.max(-my, 0, my - rect.height)
+      const distance = Math.hypot(outsideX, outsideY)
+      const ease = 0.3
+      p.x += (mx - p.x) * ease
+      p.y += (my - p.y) * ease
+      p.vx += (ivx - p.vx) * ease
+      p.vy += (ivy - p.vy) * ease
+      p.proximity = Math.max(0, 1 - distance / 140)
     }
     if (typeof window !== 'undefined') {
       window.addEventListener('pointermove', onPointer, { passive: true })
@@ -143,26 +195,95 @@ export default function MathematicalFlameField({
       observer.observe(canvas)
     }
 
-    const at = (x: number, y: number) => y * W + x
-    const sample = (field: Float32Array, x: number, y: number) => {
-      const xx = Math.max(0, Math.min(W - 1.001, x))
-      const yy = Math.max(0, Math.min(H - 1.001, y))
-      const x0 = xx | 0
-      const y0 = yy | 0
-      const fx = xx - x0
-      const fy = yy - y0
-      const a = field[at(x0, y0)]
-      const b = field[at(Math.min(W - 1, x0 + 1), y0)]
-      const c = field[at(x0, Math.min(H - 1, y0 + 1))]
-      const d = field[at(Math.min(W - 1, x0 + 1), Math.min(H - 1, y0 + 1))]
-      return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      const w = Math.min(MAX_W, Math.max(8, Math.round(rect.width / CELL)))
+      const h = Math.min(MAX_H, Math.max(8, Math.round(rect.height / CELL)))
+      if (w !== Wg || h !== Hg) {
+        Wg = w
+        Hg = h
+        canvas.width = Wg
+        canvas.height = Hg
+        image = ctx.createImageData(Wg, Hg)
+        imageData = image.data
+      }
+      const dpr = Math.min(2, window.devicePixelRatio || 1)
+      emberCanvas.width = Math.max(1, Math.round(rect.width * dpr))
+      emberCanvas.height = Math.max(1, Math.round(rect.height * dpr))
+      emberCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
+    resize()
+    let resizeObserver: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(canvas)
+    }
+
     const smooth = (a: number, b: number, x: number) => {
       const t = Math.max(0, Math.min(1, (x - a) / (b - a)))
       return t * t * (3 - 2 * t)
     }
+
+    // Bar rect in canvas CSS px (recomputed per frame — cheap).
+    const bar = { l: 0, t: 0, w: 0, h: 0, cx: 0, cy: 0, cr: 26 }
+    const measureBar = () => {
+      const el = barRef.current
+      const rect = canvas.getBoundingClientRect()
+      if (!el || !rect.width || !rect.height) return false
+      const b = el.getBoundingClientRect()
+      bar.l = b.left - rect.left
+      bar.t = b.top - rect.top
+      bar.w = b.width
+      bar.h = b.height
+      bar.cx = bar.l + bar.w / 2
+      bar.cy = bar.t + bar.h / 2
+      bar.cr = Math.min(26, bar.h / 2)
+      return true
+    }
+
+    const sdBar = (px: number, py: number) => {
+      const qx = Math.abs(px - bar.cx) - (bar.w / 2 - bar.cr)
+      const qy = Math.abs(py - bar.cy) - (bar.h / 2 - bar.cr)
+      const ax = Math.max(qx, 0)
+      const ay = Math.max(qy, 0)
+      return Math.min(Math.max(qx, qy), 0) + Math.hypot(ax, ay) - bar.cr
+    }
+
+    const spawnEmber = (x: number, y: number, kickX: number, kickY: number) => {
+      if (embers.length >= MAX_EMBERS) return
+      const a = Math.random() * TAU
+      embers.push({
+        x,
+        y,
+        vx: kickX * 0.12 + Math.cos(a) * 30,
+        vy: kickY * 0.12 + Math.sin(a) * 30 - 45,
+        life: 0,
+        maxLife: 0.7 + Math.random() * 0.9,
+        size: 1.2 + Math.random() * 1.6,
+        seed: Math.random() * 1000,
+      })
+    }
+
+    const setGlow = (intensity: number, micro: number, cool: number) => {
+      const glow = glowRef.current
+      if (!glow) return
+      const i = Math.max(0, Math.min(1, intensity))
+      if (i < 0.02) {
+        glow.style.boxShadow = 'none'
+        return
+      }
+      if (micro > 0.5) {
+        glow.style.boxShadow = `0 0 ${14 + 30 * i}px rgba(56,189,248,${0.25 + 0.35 * i}), inset 0 0 ${10 + 16 * i}px rgba(2,132,199,${0.15 + 0.25 * i})`
+      } else if (cool > 0.5) {
+        glow.style.boxShadow = `0 0 ${16 + 32 * i}px rgba(129,140,248,${0.25 + 0.32 * i}), inset 0 0 ${10 + 16 * i}px rgba(79,70,229,${0.14 + 0.22 * i})`
+      } else {
+        glow.style.boxShadow = `0 0 ${14 + 30 * i}px rgba(249,115,22,${0.28 + 0.38 * i}), 0 -3px ${18 + 26 * i}px rgba(220,38,38,${0.18 + 0.26 * i}), inset 0 0 ${8 + 14 * i}px rgba(245,158,11,${0.18 + 0.3 * i})`
+      }
+    }
+
     const draw = (now: number) => {
-      if (!visible) return
+      if (!visible || !image || !imageData) return
       if (now - last < 30 && !reducedMotion.matches) {
         raf = requestAnimationFrame(draw)
         return
@@ -170,6 +291,7 @@ export default function MathematicalFlameField({
       const dt = Math.min(0.05, last ? (now - last) / 1000 : 1 / 30)
       last = now
       simTime += reducedMotion.matches ? 0 : dt
+      const hasBar = measureBar()
 
       const target = paramsRef.current
       const easing = 1 - Math.exp(-dt * 5)
@@ -177,130 +299,147 @@ export default function MathematicalFlameField({
       active.o2Pct += (target.o2Pct - active.o2Pct) * easing
       active.airflowCms += (target.airflowCms - active.airflowCms) * easing
       active.coolFlame += ((target.coolFlame ? 1 : 0) - active.coolFlame) * easing
-      const gravity = active.gravityG
-      const micro = 1 - smooth(0.02, 0.3, gravity)
-      const turbulence = 0.025 + (1 - micro) * 0.975
-      const sourceX = W * 0.5
-      const sourceY = H * 0.76
-      const pointer = pointerRef.current
-      const vortexX = pointer.x * W
-      const vortexY = pointer.y * H
-      const pulseNow = pulseRef.current
-      if (pulseNow.id !== lastPulseRef.current.id) {
-        lastPulseRef.current = pulseNow
-        pulses.push({
-          x: W * (0.22 + pulseNow.position * 0.56),
-          y: sourceY - 5,
-          power: 0.52 + Math.min(0.38, active.o2Pct / 120),
-          at: simTime,
-        })
-      }
-      while (pulses.length > 12) pulses.shift()
-
-      // Streamfunction curl field plus a localized cursor vortex.
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-          const i = at(x, y)
-          const nx = x / W
-          const ny = y / H
-          const phase = simTime * 1.1
-          const dPsiDy =
-            0.9 * Math.cos(ny * 13 + phase + Math.sin(nx * 8 + phase) * 0.7) +
-            0.36 * Math.cos(ny * 27 - phase * 0.8 + nx * 5)
-          const dPsiDx =
-            -0.63 * Math.cos(nx * 8 + phase) * Math.sin(ny * 13 + phase + Math.sin(nx * 8 + phase) * 0.7) +
-            0.18 * Math.sin(nx * 5 + ny * 27 - phase * 0.8)
-          const dx = x - vortexX
-          const dy = y - vortexY
-          const r2 = dx * dx + dy * dy + 20
-          const cursorCurl = Math.exp(-r2 / 290) * 3.8 * pointer.proximity
-          const thermal = temperature[i]
-          const buoyancy = gravity * Math.max(0, thermal - 0.1) * 0.32
-          vx[i] = dPsiDy * 0.62 * turbulence - dy * cursorCurl / 22
-          vy[i] = -dPsiDx * 0.62 * turbulence - buoyancy + dx * cursorCurl / 22
-        }
-      }
-      // Vorticity confinement restores small eddies lost to semi-Lagrangian
-      // interpolation: f = epsilon (N × omega), with omega = curl(u).
-      for (let y = 1; y < H - 1; y++) {
-        for (let x = 1; x < W - 1; x++) {
-          const i = at(x, y)
-          curl[i] = (vy[at(x + 1, y)] - vy[at(x - 1, y)] - vx[at(x, y + 1)] + vx[at(x, y - 1)]) * 0.5
-          curlMagnitude[i] = Math.abs(curl[i])
-        }
-      }
-      for (let y = 2; y < H - 2; y++) {
-        for (let x = 2; x < W - 2; x++) {
-          const i = at(x, y)
-          const gradX = (curlMagnitude[at(x + 1, y)] - curlMagnitude[at(x - 1, y)]) * 0.5
-          const gradY = (curlMagnitude[at(x, y + 1)] - curlMagnitude[at(x, y - 1)]) * 0.5
-          const norm = Math.hypot(gradX, gradY) + 1e-5
-          const epsilon = 0.11 * turbulence
-          vx[i] += (gradY / norm) * curl[i] * epsilon
-          vy[i] -= (gradX / norm) * curl[i] * epsilon
-        }
-      }
-
-      // Semi-Lagrangian Eulerian advection, isotropic diffusion and a hot source.
-      const diffusion = 0.12 + micro * 0.2
-      const oxygenGain = 0.72 + Math.min(0.7, active.o2Pct / 60)
-      const flowX = active.airflowCms * 0.014
-      const displayAspect = canvas.clientWidth / Math.max(1, canvas.clientHeight)
-      const isotropicXScale = Math.max(0.08, Math.min(1, (W / H) / displayAspect))
-      const sourceRadiusX = (micro > 0.5 ? 18 : 11) * isotropicXScale
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-          const i = at(x, y)
-          const backX = x - (vx[i] + flowX) * dt * 8
-          const backY = y - vy[i] * dt * 8
-          const advected = sample(temperature, backX, backY)
-          const left = temperature[at(Math.max(0, x - 1), y)]
-          const right = temperature[at(Math.min(W - 1, x + 1), y)]
-          const up = temperature[at(x, Math.max(0, y - 1))]
-          const down = temperature[at(x, Math.min(H - 1, y + 1))]
-          const laplacian = left + right + up + down - 4 * temperature[i]
-          const rx = (x - sourceX) / sourceRadiusX
-          const ry = (y - sourceY) / (micro > 0.5 ? 15 : 18)
-          const sourceShape = Math.exp(-(rx * rx + ry * ry) * 1.35)
-          let ignition = sourceShape * oxygenGain * (0.22 + 0.035 * Math.sin(simTime * 3))
-          for (const pulse of pulses) {
-            const age = simTime - pulse.at
-            const px = (x - pulse.x) / 5.5
-            const py = (y - pulse.y) / 4
-            ignition += age < 1.2 ? pulse.power * Math.exp(-(px * px + py * py)) * Math.exp(-age * 2.4) : 0
-          }
-          nextTemperature[i] = Math.max(
-            0,
-            Math.min(1.5, advected + laplacian * diffusion * dt * 8 + ignition * dt * 3 - 0.18 * dt),
-          )
-        }
-      }
-      temperature.set(nextTemperature)
-
+      const micro = 1 - smooth(0.02, 0.3, active.gravityG)
       const cool = active.coolFlame
-      const pulsePhase = simTime * (cool ? 6 : 3)
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-          const i = at(x, y)
-          const t = Math.max(0, Math.min(1, temperature[i]))
-          const edgeNoise = 0.84 + 0.16 * Math.sin(x * 0.37 + y * 0.21 + pulsePhase)
-          const kelvin = 300 + t * 2700
-          const coolBand = smooth(620, 720, kelvin) * (1 - smooth(720, 850, kelvin)) * edgeNoise * cool
-          const hot = smooth(0.12, 0.85, t)
-          const blue = micro * hot
-          const blackbody = BLACKBODY_RGB[Math.round(t * 255)]
-          let r = blackbody[0] * (1 - blue) + 51 * blue
-          let g = blackbody[1] * (1 - blue) + 212 * blue
-          let b = blackbody[2] * (1 - blue) + 255 * blue
-          const core = smooth(0.72, 0.98, t)
-          r = r + (255 - r) * core * 0.78
-          g = g + (242 - g) * core * 0.7
-          b = b + (194 - b) * core * 0.55
-          r = r * (1 - coolBand) + 114 * coolBand
-          g = g * (1 - coolBand) + 90 * coolBand
-          b = b * (1 - coolBand) + 221 * coolBand
-          const alpha = Math.min(178, (hot * 105 + coolBand * 56) * edgeNoise)
-          const o = i * 4
+      const o2Gain = 0.7 + Math.min(0.6, active.o2Pct / 70)
+
+      const pointer = pointerRef.current
+      const decay = Math.exp(-dt * 4)
+      pointer.vx *= decay
+      pointer.vy *= decay
+      const pointerSpeed = Math.hypot(pointer.vx, pointer.vy)
+      const pointerNear =
+        pointer.proximity > 0 &&
+        pointer.x > -999 &&
+        pointer.x > bar.l - 40 &&
+        pointer.x < bar.l + bar.w + 40 &&
+        pointer.y > bar.t - 40 &&
+        pointer.y < bar.t + bar.h + 40
+
+      // Keystroke → a wave that travels around the perimeter from the caret.
+      const pulseNow = pulseRef.current
+      if (pulseNow.id !== lastPulseRef.current.id && hasBar) {
+        lastPulseRef.current = pulseNow
+        const px = bar.l + (0.12 + pulseNow.position * 0.76) * bar.w
+        pulses.push({
+          angle: Math.atan2(bar.t - bar.cy, px - bar.cx),
+          at: simTime,
+          power: 0.8 + Math.min(0.4, active.o2Pct / 120),
+        })
+        for (let k = 0; k < 5; k++) {
+          spawnEmber(px + (Math.random() - 0.5) * 8, bar.t, 0, -60)
+        }
+      }
+      while (pulses.length > 8) pulses.shift()
+
+      // Cursor scraping the sheath sheds a short spark trail.
+      if (pointerNear && pointerSpeed > 250) {
+        const dAtPointer = hasBar ? sdBar(pointer.x, pointer.y) : 99
+        if (dAtPointer < 30 && Math.random() < 0.75) {
+          spawnEmber(pointer.x, pointer.y, pointer.vx, pointer.vy)
+        }
+      }
+
+      const warpScale = 0.055
+      const tongueBase = 20 * (1 - micro * 0.55) + cool * 6 // tongue reach, px
+      let edgeHeat = 0
+      let edgeN = 0
+
+      for (let y = 0; y < Hg; y++) {
+        const py = (y + 0.5) * CELL
+        for (let x = 0; x < Wg; x++) {
+          const px = (x + 0.5) * CELL
+          const o = (y * Wg + x) * 4
+
+          // --- domain warp: curl-ish FBM, animated, + mouse attraction ---
+          let wx =
+            (fbm(px * warpScale + simTime * 0.7, py * warpScale - simTime * 0.31) - 0.5) * 2
+          let wy =
+            (fbm(px * warpScale - simTime * 0.42 + 40.2, py * warpScale + simTime * 0.66) - 0.5) * 2
+          const md = Math.hypot(px - pointer.x, py - pointer.y)
+          const mouseG = pointerNear ? Math.exp(-(md * md) / (2 * 68 * 68)) : 0
+          const warpAmp = (5 + 9 * mouseG) * (1 - micro * 0.4)
+          wx *= warpAmp
+          wy *= warpAmp
+          // Cursor attraction: displace the domain toward the pointer so the
+          // flame stretches toward it.
+          if (mouseG > 0.003) {
+            const inv = 1 / Math.max(8, md)
+            wx += (pointer.x - px) * inv * mouseG * 7
+            wy += (pointer.y - py) * inv * mouseG * 7
+          }
+          let d = sdBar(px + wx, py + wy)
+
+          // Perimeter coordinate (angle) + outward normal estimate.
+          const nx = px - bar.cx
+          const ny = (py - bar.cy) * 1.9
+          const ang = Math.atan2(ny, nx)
+          const topness = 0.5 + 0.5 * -Math.sin(ang) // 1 at top, 0 at bottom
+          // Organic tongues licking along the rim; stronger on top in 1g.
+          const tongueN = fbm(ang * 2.4 + simTime * 1.15, d * 0.05 - simTime * 0.8)
+          const tongueBias = micro > 0.5 ? 0.55 : 0.35 + 0.65 * topness
+          const thickness =
+            (6 + tongueBase * tongueN * tongueBias) * o2Gain + mouseG * 14 * (1 - micro * 0.5)
+          d -= Math.max(0, tongueN - 0.45) * thickness
+
+          // Keystroke waves propagating around the rim from the caret angle.
+          let wave = 0
+          for (const p of pulses) {
+            const age = simTime - p.at
+            if (age > 1.6) continue
+            let ds = Math.abs(ang - p.angle)
+            if (ds > Math.PI) ds = TAU - ds
+            const front = age * 3.4
+            const w1 = Math.exp(-((ds - front) * (ds - front)) / 0.09)
+            const w0 = Math.exp(-(ds * ds) / 0.05) * Math.exp(-age * 4)
+            wave += p.power * Math.exp(-age * 1.4) * (w1 * 0.8 + w0)
+          }
+
+          const sheath = Math.exp(-(d * d) / (2 * 13 * 13)) // main body |d|<~26
+          const contact = Math.exp(-(d * d) / (2 * 4.5 * 4.5)) // white-hot rim
+          const inset = d < 0 ? Math.exp(-((d + 7) * (d + 7)) / (2 * 5 * 5)) : 0
+          const flicker = 0.8 + 0.2 * Math.sin(simTime * (cool > 0.5 ? 5.2 : 8.4) + ang * 5)
+          let heat = (sheath * 0.85 + contact * 0.6 + wave * 0.9) * flicker * o2Gain
+          heat = Math.min(1.4, heat)
+
+          if (d > -2 && d < 14) {
+            edgeHeat += heat
+            edgeN++
+          }
+
+          const u = Math.max(0, Math.min(1, d / 26)) // 0 rim → 1 outer tip
+          let r = 0
+          let g = 0
+          let b = 0
+          let alpha = 0
+          if (cool > 0.5) {
+            const pulseA = 0.55 + 0.45 * Math.sin(simTime * 4.6)
+            r = 79 + (129 - 79) * u + wave * 60
+            g = 70 + (140 - 70) * u + wave * 40
+            b = 229 + (248 - 229) * u
+            alpha = Math.min(190, (heat * 150 + inset * 60) * pulseA)
+          } else if (micro > 0.5) {
+            // #0284C7 → #38BDF8 → #E0F2FE (contact inverted: hottest at rim)
+            r = 224 - 222 * u
+            g = 242 - 53 * u - contact * 40
+            b = 254 - 55 * u
+            alpha = Math.min(220, heat * 185 + inset * 70)
+          } else {
+            // contact → amber/white, body → orange, tip → crimson fading out
+            const cb = Math.min(1, contact + wave * 0.5)
+            r = 153 + (254 - 153) * Math.pow(1 - u, 2.2)
+            g = 27 + (240 - 27) * Math.pow(1 - u, 2.6)
+            b = 27 + (138 - 27) * Math.pow(1 - u, 3.4)
+            if (u < 0.55) {
+              const f = u / 0.55
+              r = 249 - 15 * f + (254 - 249) * cb
+              g = 115 - 60 * f + (240 - 115) * cb
+              b = 22 + 16 * f + (138 - 22) * cb
+            }
+            alpha = Math.min(245, heat * 200 + contact * 90 + inset * 90)
+          }
+          // Inset glow bleeding through the translucent pill.
+          alpha = Math.max(alpha, inset * (cool > 0.5 ? 70 : micro > 0.5 ? 80 : 110))
           imageData[o] = r
           imageData[o + 1] = g
           imageData[o + 2] = b
@@ -308,6 +447,43 @@ export default function MathematicalFlameField({
         }
       }
       ctx.putImageData(image, 0, 0)
+
+      const heatAvg = edgeN > 0 ? edgeHeat / edgeN : 0
+      const targetGlow = Math.min(1, heatAvg * 1.35 + (pointerNear ? 0.12 : 0))
+      glowLevel += (targetGlow - glowLevel) * (1 - Math.exp(-dt * 5))
+      setGlow(glowLevel * (0.85 + 0.15 * Math.sin(simTime * 6.1)), micro, cool)
+
+      // ---- short-lived sparks, crisp overlay ----
+      const cw = canvas.clientWidth || 1
+      const ch = canvas.clientHeight || 1
+      emberCtx.clearRect(0, 0, cw, ch)
+      for (let k = embers.length - 1; k >= 0; k--) {
+        const e = embers[k]
+        e.life += dt
+        if (e.life >= e.maxLife) {
+          embers.splice(k, 1)
+          continue
+        }
+        const swirl = Math.sin(e.seed + e.life * 9) * 30
+        e.vx += swirl * dt - e.vx * 2.2 * dt
+        e.vy += (-50 * (1 - micro) - e.vy * 1.8) * dt
+        e.x += e.vx * dt
+        e.y += e.vy * dt
+        const lifeT = e.life / e.maxLife
+        const size = e.size * (1 - lifeT * 0.85)
+        const alpha = 1 - lifeT
+        if (size <= 0.15) continue
+        emberCtx.fillStyle =
+          micro > 0.5
+            ? `rgba(125,211,252,${(alpha * 0.9).toFixed(3)})`
+            : cool > 0.5
+              ? `rgba(165,180,252,${(alpha * 0.75).toFixed(3)})`
+              : `rgba(255,${Math.round(170 + 70 * (1 - lifeT))},60,${(alpha * 0.95).toFixed(3)})`
+        emberCtx.beginPath()
+        emberCtx.arc(e.x, e.y, size, 0, TAU)
+        emberCtx.fill()
+      }
+
       if (!reducedMotion.matches) raf = requestAnimationFrame(draw)
     }
 
@@ -315,16 +491,25 @@ export default function MathematicalFlameField({
     return () => {
       cancelAnimationFrame(raf)
       observer?.disconnect()
+      resizeObserver?.disconnect()
       if (typeof window !== 'undefined') {
         window.removeEventListener('pointermove', onPointer)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute -inset-x-3 -inset-y-2 overflow-hidden rounded-[30px] opacity-70 mix-blend-multiply">
-      <canvas ref={canvasRef} className="h-full w-full blur-[1.5px]" style={{ imageRendering: 'auto' }} />
-      <div className="absolute inset-0 bg-gradient-to-r from-[#F4F3EE]/60 via-transparent to-[#F4F3EE]/60" />
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute -inset-9 mix-blend-normal"
+    >
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 h-full w-full blur-[1.5px]"
+        style={{ imageRendering: 'auto' }}
+      />
+      <canvas ref={emberCanvasRef} className="absolute inset-0 h-full w-full" />
     </div>
   )
 }
