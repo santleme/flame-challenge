@@ -81,6 +81,7 @@ export interface ChamberUiCommand {
   set_airflow_cm_s?: number | null
   load_preset?: string | null
   __investigation?: string | null
+  __presetId?: string | null
   __origin?: string
   __run?: boolean
   set_gravity_g?: number | null
@@ -174,7 +175,7 @@ export async function siVoice(audio: Blob, state: SiChamberState): Promise<SiRes
         window.clearTimeout(timeout)
       }
     }
-    if (response!.ok) return (await response!.json()) as SiResponse
+    if (response && response.ok) return (await response.json()) as SiResponse
     return {
       briefing: 'Voice command service is currently unavailable or speech could not be transcribed.',
       recommended_action: 'Use manual controls or retry voice input.',

@@ -582,7 +582,8 @@ def _messages(message: str, state: ChamberState, packet: dict) -> list[dict]:
         # recommendation — the full option lattice costs ~2x tokens
         "decision_options": [
             {"card": c["card"], "context": c["context"],
-             "best": max(c["options"], key=lambda o: o["score"])}
+             "best": max(c["options"], key=lambda o: o["score"])
+                    if c["options"] else None}
             for c in packet["decisionOptions"]
         ],
         "risk_explain": [{"factor": c["label"], "share": c["share"]}

@@ -189,9 +189,13 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       }
       const nextChamber = mergeChamberState(chamberRef.current, sim)
       setChamber(nextChamber)
-      const preset = presets.find(
-        (p) => p.investigationId === (cmd.__investigation ?? cmd.load_preset),
-      )
+      // several missions share an investigationId (apollo 1 & 11 → flare,
+      // apollo 13 & 12 → same) — match the deck envelope by its own id
+      const preset =
+        presets.find((p) => p.id === cmd.__presetId) ??
+        presets.find(
+          (p) => p.investigationId === (cmd.__investigation ?? cmd.load_preset),
+        )
       void sendTextRef.current?.(
         preset?.prompt ?? `Analyze ${cmd.__investigation ?? cmd.load_preset ?? 'this mission'}.`,
         preset ? `Explore mission — ${preset.title}` : undefined,
