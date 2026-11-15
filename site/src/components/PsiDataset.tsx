@@ -172,14 +172,9 @@ export default function PsiDataset() {
             data-hero
             className="mt-6 max-w-2xl text-body leading-copy text-ink opacity-80"
           >
-            experiment telemetry pulled from the nasa physical sciences
-            informatics repo, normalized to csv, and frozen into{' '}
-            <span className="font-mono text-ink opacity-90">
-              shared/calibrated-data/*.json
-            </span>{' '}
-            — the engine only reads verified records. burning behind the
-            headline: saffire-vi, a pmma slab ignited inside a cygnus
-            vehicle after departure — the scenario this engine replays.
+            real nasa flight experiments — the engine only reads verified
+            records. behind the headline: saffire-vi burning in a cygnus
+            vehicle.
           </p>
 
           <div data-hero className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -307,7 +302,7 @@ export default function PsiDataset() {
                           className={inv.verified ? 'text-accent' : 'text-ink opacity-40'}
                           title={inv.verified ? 'pipeline-ingested psi data' : 'curated from public literature'}
                         >
-                          {inv.verified ? 'psi' : 'lit'}
+                          {inv.verified ? 'verified' : 'curated'}
                         </span>
                       </td>
                     </tr>,
