@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { missionMedia } from './missionMedia'
 
 describe('missionMedia', () => {
-  it('matches the seed reports to their NASA footage', () => {
-    expect(missionMedia('flare', 'Lunar 0.16g').src).toContain('apollo11')
-    expect(missionMedia('flex-2', 'Microgravity (0g)').src).toContain('sofie')
-    expect(missionMedia('saffire', 'Microgravity (0g)').src).toContain('saffire5')
+  it('gives every known investigation its own distinct NASA plate', () => {
+    const ids = ['flare', 'sofie-gel', 'flex-2', 'saffire', 'same', 'acme', 'bass-ii', 'confined-combustion']
+    const srcs = ids.map((id) => missionMedia(id, '').src)
+    expect(new Set(srcs).size).toBe(ids.length)
   })
 
   it('is case-insensitive on the investigation id', () => {

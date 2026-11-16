@@ -561,7 +561,9 @@ export default function MissionReportsPanel() {
               {tab === 'envelope' && <EnvelopeTab report={current} />}
               {tab === 'crew' && <CrewTab report={current} />}
             </div>
-            <p className="note" style={{ marginTop: '2rem' }}>IGNIS-REPORT-{shortId(current.id)}</p>
+            <p className="note" style={{ marginTop: '2rem' }}>
+              IGNIS-REPORT-{shortId(current.id)} · {current.response.mode} · {current.response.model}
+            </p>
           </section>
         </>
       )}

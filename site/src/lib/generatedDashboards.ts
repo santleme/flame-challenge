@@ -143,7 +143,7 @@ const MAX_ITEMS = 30
  * not to module evaluation time.
  */
 export function buildSeedReports(): GeneratedDashboard[] {
-  return [
+  const seeds: GeneratedDashboard[] = [
   {
     id: 'artemis-01',
     createdAt: Date.now() - 1000 * 60 * 35,
@@ -674,6 +674,26 @@ export function buildSeedReports(): GeneratedDashboard[] {
     },
   },
   ]
+  // Curated narrative stays; every number a juror can check gets
+  // recomputed through the same pipeline live reports use — real model
+  // components, real Shapley drivers, real conformal band. Seeds must
+  // never disagree with the physics the rest of the app reports.
+  return seeds.map((s) => {
+    const c = compileMissionReportSpec(s.prompt, s.response, s.run, s.analysisScenario, s.engineGravityMode)
+    return {
+      ...s,
+      spec: {
+        ...s.spec,
+        rubric: { ...s.spec.rubric, rank: c.rubric.rank },
+        safetyEnvelope: {
+          ...s.spec.safetyEnvelope,
+          currentO2: c.safetyEnvelope.currentO2,
+          currentFlow: c.safetyEnvelope.currentFlow,
+          zone: c.safetyEnvelope.zone,
+        },
+      },
+    }
+  })
 }
 
 /** User-generated reports only — localStorage v2 plus a one-time v1

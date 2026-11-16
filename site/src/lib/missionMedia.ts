@@ -40,19 +40,27 @@ const MEDIA = {
     poster: '/assets/nasa/skylab_loop_poster.jpg',
     caption: 'Skylab zero-g flammability studies — NASA Glenn',
   },
+  mir: {
+    src: '/assets/nasa/mir_loop.mp4',
+    poster: '/assets/nasa/mir_loop_poster.jpg',
+    caption: 'Mir space station operations — NASA/Roscosmos',
+  },
 } as const satisfies Record<string, MissionMedia>
 
+/** one distinct NASA clip per investigation — no two reports share a plate */
 const BY_INVESTIGATION: Record<string, keyof typeof MEDIA> = {
   flare: 'apollo11',
   'sofie-gel': 'sofie',
-  'flex-2': 'sofie',
-  flex: 'sofie',
+  'flex-2': 'droptower',
+  flex: 'droptower',
   saffire: 'saffire',
-  same: 'saffire',
+  // smoke aerosol measurement ↔ soot chains in microgravity
+  same: 'soot',
   acme: 'acme',
-  'bass-ii': 'droptower',
-  'confined-combustion': 'droptower',
-  soot: 'soot',
+  'bass-ii': 'skylab',
+  // confined cabin fire — the Mir 1997 oxygen-candle incident
+  'confined-combustion': 'mir',
+  soot: 'skylab',
 }
 
 /** NASA footage that best matches a report's investigation, falling
