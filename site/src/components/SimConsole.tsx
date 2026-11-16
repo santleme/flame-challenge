@@ -94,7 +94,6 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
     // ui command (2.5 s window) — ordering matters, React batches the rest
-    let generated: ReturnType<typeof generateDashboard> | undefined
     if (sim && Object.values(sim).some((v) => v != null)) {
       const nextChamber = mergeChamberState(chamberRef.current, sim)
       // Materialize full chamber configuration so replacement LiveChamber instances
@@ -123,7 +122,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       // operating point res.chamber was actually scored at (commands may
       // have retuned O₂/flow after scoring)
       if (hasRunCondition) {
-        generated = generateDashboard(
+        generateDashboard(
           prompt, res, undefined, nextChamber,
           analysisScenarioForResponse(res, sent ?? nextChamber),
         )
@@ -144,12 +143,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       } else {
         navigate(target)
       }
-    } else if (generated && !suppressNav) {
-      // a run produced a mission report and the copilot didn't point
-      // anywhere else (offline fallback never emits navigation) — open
-      // the dashboard on the fresh brief
-      navigate('#dashboard')
     }
+    // never auto-navigate after generating a report: sim and dashboard
+    // are exclusive views, so leaving the deck would unmount the console
+    // and discard chat, chamber state and the running experiment. The
+    // turn's "view dashboards" link is the deliberate way over.
     setMsgs((ms2) =>
       ms2.map((m) =>
         m.id === turnId
