@@ -161,7 +161,7 @@ const O2_MAX = 40
  *  The dot marks where this mission actually sits on the curve. */
 function RiskSpark({ preset }: { preset: MissionPreset }) {
   const { path, cx, cy } = useMemo(() => {
-    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 1)
+    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 2)
     const path = pts
       .map((p, i) => `${i === 0 ? 'M' : 'L'}${(((p.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100).toFixed(1)},${(34 - p.riskIndex * 30).toFixed(1)}`)
       .join(' ')

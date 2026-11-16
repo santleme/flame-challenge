@@ -1,7 +1,7 @@
 import type { ChamberState } from './live'
 import type { SiChamberState, SiResponse } from './api'
 import type { CrewMember, CausalEvent, CounterfactualDoctrine, MissionOutcomeStatus } from '../components/CrewTimelinePanel'
-import { MATERIALS, riskIndexLocal } from './risk'
+import { MATERIALS, riskIndexLocal, riskLevel } from './risk'
 import type { RiskUncertainty } from './risk'
 
 export interface HeadlineFinding {
@@ -113,6 +113,9 @@ export interface MissionReportSpec {
   safetyEnvelope: {
     currentO2: number
     currentFlow: number
+    /** material-specific limiting oxygen concentration (%) — the chart's
+     *  safe-zone line, not a generic constant */
+    locPct?: number
     zone: 'safe' | 'amber' | 'runaway'
     trajectory: Array<{ o2Pct: number; flowCms: number }>
   }
@@ -679,9 +682,30 @@ export function buildSeedReports(): GeneratedDashboard[] {
   // components, real Shapley drivers, real conformal band. Seeds must
   // never disagree with the physics the rest of the app reports.
   return seeds.map((s) => {
-    const c = compileMissionReportSpec(s.prompt, s.response, s.run, s.analysisScenario, s.engineGravityMode)
+    const a = s.analysisScenario
+    // The authored chamber scores predate the analysisScenario fields and
+    // disagree with the model — re-score the scenario and overwrite the
+    // response chamber so composite risk, level, components and Shapley
+    // drivers all describe the same evaluation.
+    const scored = riskIndexLocal(
+      (a?.materialId ?? 'pmma').toLowerCase(),
+      a?.o2Pct ?? 21,
+      a?.flowCms ?? 5,
+      a?.gravity ?? 'microgravity',
+    )
+    const response: SiResponse = {
+      ...s.response,
+      chamber: {
+        ...s.response.chamber,
+        riskIndex: scored.riskIndex,
+        level: scored.level,
+        uncertainty: scored.uncertainty,
+      },
+    }
+    const c = compileMissionReportSpec(s.prompt, response, s.run, a, s.engineGravityMode)
     return {
       ...s,
+      response,
       spec: {
         ...s.spec,
         rubric: { ...s.spec.rubric, rank: c.rubric.rank },
@@ -689,6 +713,7 @@ export function buildSeedReports(): GeneratedDashboard[] {
           ...s.spec.safetyEnvelope,
           currentO2: c.safetyEnvelope.currentO2,
           currentFlow: c.safetyEnvelope.currentFlow,
+          locPct: c.safetyEnvelope.locPct,
           zone: c.safetyEnvelope.zone,
         },
       },
@@ -811,8 +836,11 @@ export function compileMissionReportSpec(
       : res.riskIndex
   const riskPct = Math.round(riskVal <= 1 ? riskVal * 100 : riskVal)
 
+  // shared thresholds with lib/risk — the report badge can never disagree
+  // with the same value shown elsewhere in the app
+  const lvl = riskLevel(riskVal <= 1 ? riskVal : riskVal / 100)
   const level: 'low' | 'moderate' | 'high' | 'critical' =
-    riskPct >= 75 ? 'critical' : riskPct >= 50 ? 'high' : riskPct >= 30 ? 'moderate' : 'low'
+    lvl === 'minimal' ? 'low' : (lvl as 'low' | 'moderate' | 'high' | 'critical')
 
   const rawUncertainty = response.chamber?.uncertainty as RiskUncertainty | undefined
   const calculatedUncertainty = rawUncertainty ?? res.uncertainty
@@ -963,6 +991,7 @@ export function compileMissionReportSpec(
     safetyEnvelope: {
       currentO2: o2,
       currentFlow: flow,
+      locPct: res.locPct,
       zone,
       trajectory: [
         { o2Pct: Math.max(10, o2 - 6), flowCms: Math.max(0, flow - 3) },

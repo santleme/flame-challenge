@@ -332,6 +332,7 @@ export function synthesizeLocalSiResponse(message: string, state: SiChamberState
     chamber: {
       riskIndex: riskRes.riskIndex,
       level: riskRes.level,
+      investigationId: invId,
       materialId,
       o2Pct,
       flowCms,
