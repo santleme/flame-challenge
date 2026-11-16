@@ -59,7 +59,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
   )
   const chamberRef = useRef(chamber)
   chamberRef.current = chamber
-  const busy = msgs.some((m) => m.kind === 'agent' && m.pending)
+  // a previewed turn looks complete but its live answer is still in
+  // flight — keep the composer blocked until it commits, or a follow-up
+  // would read the pre-preview chamber state
+  const [awaitingLive, setAwaitingLive] = useState(false)
+  const busy = msgs.some((m) => m.kind === 'agent' && m.pending) || awaitingLive
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -132,12 +136,15 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160
   }
 
-  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '', sent?: SiChamberState) => {
+  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '', sent?: SiChamberState, provisional = false) => {
     const sim = res.simulation_commands ?? null
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
-    // ui command (2.5 s window) — ordering matters, React batches the rest
-    if (sim && Object.values(sim).some((v) => v != null)) {
+    // ui command (2.5 s window) — ordering matters, React batches the rest.
+    // A provisional preview is display-only: its locally-guessed commands
+    // never touch the chamber, or partial live commands would merge onto
+    // a contaminated state. The final response commits its commands once.
+    if (!provisional && sim && Object.values(sim).some((v) => v != null)) {
       const nextChamber = mergeChamberState(chamberRef.current, sim)
       // Materialize full chamber configuration so replacement LiveChamber instances
       // in follow-up runs retain accumulated O2, airflow, and investigation settings.
@@ -163,8 +170,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       // panel listens on 'ignis:dashboard-generated' and shows it as '· live'.
       // scenario = post-command execution chamber; analysisScenario = the
       // operating point res.chamber was actually scored at (commands may
-      // have retuned O₂/flow after scoring)
-      if (hasRunCondition) {
+      // have retuned O₂/flow after scoring). A provisional local answer
+      // skips this — the live response that upgrades it owns the report,
+      // so one run never yields two briefs
+      if (hasRunCondition && !provisional) {
         generateDashboard(
           prompt, res, undefined, nextChamber,
           analysisScenarioForResponse(res, sent ?? nextChamber),
@@ -177,7 +186,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const section = res.navigation?.scroll_to_section
     // preset-driven turns must never leave the deck — the operator just
     // asked to simulate here, so a stray 'psi-dataset' hop is a bug
-    if (section && !suppressNav) {
+    if (section && !suppressNav && !provisional) {
       // 'chamber' is the copilot's name for this console — the live-chamber
       // video section no longer exists
       const target = section === 'chamber' ? '#ignis-console' : section.startsWith('#') ? section : `#${section}`
@@ -198,10 +207,13 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               kind: 'agent',
               id: turnId,
               pending: false,
-              tools,
+              // a preview claims nothing it hasn't done: tool rows and
+              // the run/dashboard link appear only once real commands
+              // were committed (the upgrade rewrites them below)
+              tools: provisional ? [] : tools,
               briefing: res.briefing,
               action: res.recommended_action || null,
-              run,
+              run: provisional ? null : run,
               mode: res.mode,
               model: res.model,
               engine: res.engine ?? null,
@@ -273,10 +285,36 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     commitMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
     const sent = chamberRef.current
-    const res =
-      (await siChat(text, sent)) ??
-      synthesizeLocalSiResponse(text, sent)
-    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent)
+    // progressive answer: the deterministic local model is instant and
+    // grounded — show it when the copilot is slow (>8 s, e.g. a cold or
+    // busy gateway), then upgrade the same turn when the live answer
+    // lands. siChat itself resolves locally at its own timeout, so the
+    // turn always ends complete.
+    const live = siChat(text, sent)
+    const winner = await Promise.race([
+      live.then((r) => ({ r, provisional: false })),
+      new Promise<{ r: SiResponse; provisional: boolean }>((resolve) =>
+        window.setTimeout(
+          () => resolve({ r: synthesizeLocalSiResponse(text, sent), provisional: true }),
+          8000,
+        ),
+      ),
+    ])
+    const res = winner.r ?? synthesizeLocalSiResponse(text, sent)
+    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
+    if (winner.provisional) {
+      setAwaitingLive(true)
+      try {
+        const later = await live
+        // the final answer commits its commands once, merging onto the
+        // original sent state (the preview never touched the chamber).
+        // If the uplink failed outright, the preview becomes the answer
+        // and its commands run like a normal offline turn.
+        applyResponse(later ?? res, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
+      } finally {
+        setAwaitingLive(false)
+      }
+    }
   }
   sendTextRef.current = sendText
 
