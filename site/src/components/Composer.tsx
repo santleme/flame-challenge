@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconMic, IconSend } from './Icons'
-import MathematicalFlameField, { parseFlameParameters, type FlameParameters } from './MathematicalFlameField'
 
 const MIN_CLIP_MS = 400
 const MAX_TEXTAREA_HEIGHT = 160
@@ -9,12 +8,10 @@ export default function Composer({
   onSend,
   onVoice,
   disabled = false,
-  flameDefaults,
 }: {
   onSend: (text: string) => void
   onVoice: (blob: Blob) => void
   disabled?: boolean
-  flameDefaults?: FlameParameters
 }) {
   const [text, setText] = useState('')
   const [recording, setRecording] = useState(false)
@@ -29,10 +26,6 @@ export default function Composer({
   const startedRef = useRef(0)
   const holdingRef = useRef(false)
   const cancelRecordingRef = useRef(false)
-  const [pulse, setPulse] = useState({ id: 0, position: 0.5 })
-  const formRef = useRef<HTMLFormElement>(null)
-  const glowRef = useRef<HTMLDivElement>(null)
-  const flameParameters: FlameParameters = parseFlameParameters(text, flameDefaults)
 
   const stopTimer = () => {
     if (timerRef.current != null) {
@@ -131,19 +124,12 @@ export default function Composer({
 
   return (
     <div className="relative w-full overflow-visible">
-      <MathematicalFlameField parameters={flameParameters} pulse={pulse} barRef={formRef} glowRef={glowRef} />
       <div className="relative">
-        <div
-          ref={glowRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-[26px]"
-        />
         <form
-        ref={formRef}
-        onSubmit={(event) => {
-          event.preventDefault()
-          send()
-        }}
+          onSubmit={(event) => {
+            event.preventDefault()
+            send()
+          }}
         className={`group relative flex items-end gap-2 rounded-[26px] border bg-white/78 p-2 pl-4 shadow-[0_2px_8px_rgba(25,35,45,0.035),0_14px_40px_rgba(25,35,45,0.10)] backdrop-blur-sm transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-accent/65 focus-within:ring-4 focus-within:ring-accent/10 dark:bg-[#151b22]/90 dark:shadow-[0_14px_40px_rgba(0,0,0,0.28)] sm:pl-5 ${
           recording
             ? 'border-red-400/50 bg-red-50/75 dark:bg-red-950/20'
@@ -167,19 +153,7 @@ export default function Composer({
             rows={1}
             value={text}
             onChange={(event) => {
-              const next = event.target.value
-              const cursorPosition = event.currentTarget.selectionStart ?? next.length
-              setText(next)
-              if (
-                typeof InputEvent !== 'undefined' &&
-                event.nativeEvent instanceof InputEvent &&
-                event.nativeEvent.inputType.startsWith('insert')
-              ) {
-                setPulse((current) => ({
-                  id: current.id + 1,
-                  position: next.length > 0 ? Math.max(0, Math.min(1, cursorPosition / next.length)) : 0.5,
-                }))
-              }
+              setText(event.target.value)
               resizeTextarea(event.currentTarget)
             }}
             onKeyDown={(event) => {

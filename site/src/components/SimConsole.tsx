@@ -348,12 +348,6 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           onSend={sendText}
           onVoice={sendVoice}
           disabled={busy}
-          flameDefaults={{
-            gravityG: GRAVITY_G[chamber.gravity] ?? 0,
-            o2Pct: chamber.o2Pct,
-            airflowCms: chamber.flowCms ?? 0.5,
-            coolFlame: false,
-          }}
         />
       </div>
     </section>
