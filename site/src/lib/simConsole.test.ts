@@ -8,6 +8,7 @@ import {
   runOutcome,
   toolCallsFromCommands,
 } from './simConsole'
+import { protocolToCommands } from '../components/AgentTurn'
 
 const base: SiChamberState = {
   investigationId: 'flex-2',
@@ -109,6 +110,52 @@ describe('mergeChamberState', () => {
       set_o2_percent: 18,
     })
     expect(next.o2Pct).toBe(18)
+  })
+
+  it('does not mark chamber sealed on local suppression', () => {
+    const next = mergeChamberState(base, {
+      trigger_containment: 'SUPPRESS_LOCAL',
+    })
+    expect(next.sealed).toBeUndefined()
+  })
+
+  it('marks chamber sealed on COOL_AND_ISOLATE', () => {
+    const next = mergeChamberState(base, {
+      trigger_containment: 'COOL_AND_ISOLATE',
+    })
+    expect(next.sealed).toBe(true)
+  })
+})
+
+describe('protocolToCommands', () => {
+  it('preserves recommended numeric oxygen setpoint for REDUCE_O2', () => {
+    const cmd = protocolToCommands('REDUCE_O2', { set_o2_percent: 16 })
+    expect(cmd).toEqual({ set_o2_percent: 16 })
+  })
+
+  it('calculates material-aware target from chamber when commands has no O2 setpoint', () => {
+    const pmmaChamber: SiChamberState = {
+      investigationId: 'sofie-gel',
+      materialId: 'pmma',
+      o2Pct: 25,
+      flowCms: 2.0,
+      gravity: 'microgravity',
+    }
+    // PMMA LOC is 15%, target = LOC + 1 = 16%
+    const cmd = protocolToCommands('REDUCE_O2', null, pmmaChamber)
+    expect(cmd?.set_o2_percent).toBe(16)
+  })
+
+  it('enables applying local suppression without sealing chamber', () => {
+    const cmd = protocolToCommands('SUPPRESS_LOCAL')
+    expect(cmd).toEqual({ trigger_containment: 'SUPPRESS_LOCAL' })
+    const applied = mergeChamberState(base, cmd!)
+    expect(applied.sealed).toBeUndefined()
+  })
+
+  it('maps CUT_VENTILATION and COOL_AND_ISOLATE', () => {
+    expect(protocolToCommands('CUT_VENTILATION')).toEqual({ set_airflow_cm_s: 0 })
+    expect(protocolToCommands('COOL_AND_ISOLATE')).toEqual({ trigger_containment: 'sealed' })
   })
 })
 

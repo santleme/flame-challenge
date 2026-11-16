@@ -53,6 +53,7 @@ export interface AgentTurnModel {
   tools: ToolCall[]
   briefing: string
   action: string | null
+  commands?: SiSimulationCommands | null
   run: RunRequest | null
   mode: string | null
   model: string | null
@@ -129,14 +130,21 @@ export function mergeChamberState(
   if (sim.set_airflow_cm_s != null) next.flowCms = sim.set_airflow_cm_s
   if (sim.set_gravity_g != null) next.gravity = gravityRegime(sim.set_gravity_g)
   if (sim.trigger_containment != null) {
-    next.sealed = true
+    const code = String(sim.trigger_containment).toLowerCase()
+    const isSealing =
+      code === 'sealed' ||
+      code.includes('seal') ||
+      code.includes('isolate') ||
+      code.includes('cool_and_isolate') ||
+      code.includes('n2') ||
+      code.includes('purge')
+    if (isSealing) {
+      next.sealed = true
+    }
     // Mirror LiveChamber's N2 purge: a nitrogen purge without an explicit
     // O2 setpoint drops the chamber to 11.5% — keep the tracked state in
     // sync so follow-up commands don't rerun at pre-purge oxygen.
-    const isN2Purge =
-      typeof sim.trigger_containment === 'string' &&
-      (sim.trigger_containment.toLowerCase().includes('n2') ||
-        sim.trigger_containment.toLowerCase().includes('purge'))
+    const isN2Purge = code.includes('n2') || code.includes('purge')
     if (isN2Purge && sim.set_o2_percent == null) next.o2Pct = 11.5
   }
   return next

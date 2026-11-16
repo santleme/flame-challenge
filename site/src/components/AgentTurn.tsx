@@ -1,7 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { navigate } from '../lib/scroll'
 import type { AgentTurnModel } from '../lib/simConsole'
-import type { SiEvidence, SiSimulationCommands } from '../lib/api'
+import {
+  FALLBACK_INVESTIGATIONS,
+  type SiChamberState,
+  type SiEvidence,
+  type SiSimulationCommands,
+} from '../lib/api'
+import { riskIndexLocal } from '../lib/risk'
 import IgnisSprite from './IgnisSprite'
 
 /** rotating status quips while the copilot thinks — dry mission-log humor */
@@ -31,17 +37,43 @@ const sup = (n: number) =>
     .map((d) => SUP_DIGITS[Number(d)])
     .join('')
 
+export function computeMaterialAwareO2Target(chamber?: SiChamberState): number {
+  if (!chamber) return 14
+  const matId =
+    chamber.materialId ??
+    (chamber.investigationId ? FALLBACK_INVESTIGATIONS[chamber.investigationId]?.materialId : null) ??
+    'pmma'
+  const loc = riskIndexLocal(
+    matId,
+    chamber.o2Pct ?? 21,
+    chamber.flowCms ?? 0,
+    chamber.gravity ?? 'microgravity',
+  ).locPct
+  return Math.max(0, Math.min(Math.round((loc + 1) * 10) / 10, (chamber.o2Pct ?? 21) - 1))
+}
+
 /** converts recognized protocol codes into concrete simulation commands */
-function protocolToCommands(action: string | null | undefined): SiSimulationCommands | null {
+export function protocolToCommands(
+  action: string | null | undefined,
+  commands?: SiSimulationCommands | null,
+  chamber?: SiChamberState,
+): SiSimulationCommands | null {
   if (!action) return null
   const code = action.trim().toUpperCase()
   switch (code) {
     case 'CUT_VENTILATION':
-      return { set_airflow_cm_s: 0 }
-    case 'REDUCE_O2':
-      return { set_o2_percent: 14 }
+      return { set_airflow_cm_s: typeof commands?.set_airflow_cm_s === 'number' ? commands.set_airflow_cm_s : 0 }
+    case 'REDUCE_O2': {
+      const targetO2 =
+        typeof commands?.set_o2_percent === 'number'
+          ? commands.set_o2_percent
+          : computeMaterialAwareO2Target(chamber)
+      return { set_o2_percent: targetO2 }
+    }
     case 'COOL_AND_ISOLATE':
-      return { trigger_containment: 'sealed' }
+      return { trigger_containment: commands?.trigger_containment ?? 'sealed' }
+    case 'SUPPRESS_LOCAL':
+      return { trigger_containment: commands?.trigger_containment ?? 'SUPPRESS_LOCAL' }
     default:
       return null
   }
@@ -122,9 +154,11 @@ function renderBriefing(text: string, evidence: SiEvidence[]): ReactNode {
 export default function AgentTurn({
   turn,
   onApply,
+  chamber,
 }: {
   turn: AgentTurnModel
   live?: boolean
+  chamber?: SiChamberState
   onApply?: (sim: SiSimulationCommands) => void
 }) {
   const [quip, setQuip] = useState(0)
@@ -153,7 +187,7 @@ export default function AgentTurn({
     turn.riskIndex != null && !Number.isNaN(turn.riskIndex)
       ? Math.round(turn.riskIndex * 100)
       : null
-  const executableCommands = protocolToCommands(turn.action)
+  const executableCommands = protocolToCommands(turn.action, turn.commands, chamber)
 
   const applyProtocol = () => {
     if (!executableCommands) return
@@ -318,7 +352,7 @@ export default function AgentTurn({
             {evidence.map((item, i) => (
               <span key={`${item.accession}-${i}`} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
                 <sup className="text-[10px] text-accent">{sup(i + 1)}</sup>
-                {item.sourceUrl ? (
+                {item.sourceUrl && item.verified ? (
                   <a
                     href={item.sourceUrl}
                     target="_blank"

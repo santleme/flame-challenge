@@ -210,6 +210,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               tools: provisional ? [] : tools,
               briefing: res.briefing,
               action: res.recommended_action || null,
+              commands: res.simulation_commands ?? null,
               run: provisional ? null : run,
               mode: res.mode,
               model: res.model,
@@ -236,6 +237,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     tools: [],
     briefing: '',
     action: null,
+    commands: null,
     run: null,
     mode: null,
     model: null,
@@ -365,6 +367,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
                   tools: [],
                   briefing: 'Voice uplink failed — type or retry.',
                   action: null,
+                  commands: null,
                   run: null,
                   mode: 'offline-fallback',
                   model: null,
@@ -470,7 +473,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               )}
               {g.agents.map((a, ai) => (
                 <div key={a.id} className={g.user || ai > 0 ? 'mt-6' : ''}>
-                  <AgentTurn turn={a} live={a.id === liveTurnId} onApply={applyCommands} />
+                  <AgentTurn turn={a} live={a.id === liveTurnId} chamber={chamber} onApply={applyCommands} />
                 </div>
               ))}
             </article>
