@@ -28,7 +28,7 @@ const SECTION_IDS: Record<string, string> = {
 }
 
 /** sections that live inside the #simulations deck */
-const SIM_CHILDREN = new Set(['chamber'])
+const SIM_CHILDREN = new Set(['chamber', 'ignis-console'])
 
 export function isSimChild(name: string): boolean {
   return SIM_CHILDREN.has(name)
@@ -67,8 +67,8 @@ export function scrollToSection(name: string): boolean {
     navigate('#simulations')
     return true
   }
-  if (name === 'dashboard') {
-    navigate('#dashboard')
+  if (name === 'dashboard' || name === 'dashboard-reports' || name.startsWith('dashboard-') || name === 'mission-reports') {
+    navigate(`#${name}`)
     return true
   }
   if (SIM_CHILDREN.has(name)) {

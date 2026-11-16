@@ -726,6 +726,8 @@ async def answer(message: str, state: ChamberState) -> dict:
                 "accession": n["accession"],
                 "investigationId": n["investigationId"],
                 "fuel": n["fuel"],
+                "o2Pct": n.get("o2Pct"),
+                "flowCms": n.get("flowCms"),
                 "outcome": n["outcome"],
                 "similarity": n["similarity"],
                 "verified": n["verified"],

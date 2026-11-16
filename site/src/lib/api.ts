@@ -308,7 +308,7 @@ export function synthesizeLocalSiResponse(message: string, state: SiChamberState
       outcome: 'grounded physical solver calculation',
       similarity: 88,
       verified: false,
-      sourceUrl: 'https://psi.nasa.gov/physci/repo',
+      sourceUrl: '',
       o2Pct,
       flowCms,
     },

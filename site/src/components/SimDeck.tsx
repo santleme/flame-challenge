@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { gsap } from '../lib/scroll'
+import { clearInnerTarget, gsap, peekInnerTarget } from '../lib/scroll'
 import { emitUiCommand } from '../lib/simBus'
 import { GRAVITY_G } from '../lib/simConsole'
 import { attachSmoothScroll } from '../lib/smoothOverlay'
@@ -284,6 +284,37 @@ export default function SimDeck() {
     return root ? attachSmoothScroll(root) : undefined
   }, [])
 
+  useEffect(() => {
+    const scrollToInner = (targetId: string) => {
+      const el =
+        targetId === 'chamber' || targetId === 'ignis-console'
+          ? document.getElementById('ignis-console') ?? document.getElementById('chamber')
+          : document.getElementById(targetId)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        clearInnerTarget()
+      }
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const pending = peekInnerTarget()
+    if (pending) {
+      timer = setTimeout(() => scrollToInner(pending), 120)
+    }
+
+    const onScrollInner = (e: Event) => {
+      const detail = (e as CustomEvent<{ id: string }>).detail
+      if (detail?.id) {
+        scrollToInner(detail.id)
+      }
+    }
+    window.addEventListener('ignis:scroll-inner', onScrollInner)
+    return () => {
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('ignis:scroll-inner', onScrollInner)
+    }
+  }, [])
+
   // selecting an envelope marks it active and announces the pick on the
   // chamber bus — the console below turns each pick into a real run
   // (chat turn + live chamber); scroll it into view so the operator sees it boot
@@ -537,6 +568,7 @@ export default function SimDeck() {
         </section>
 
         {/* ---- live console — chat + flame composer under the envelopes ---- */}
+        <div id="chamber" className="relative scroll-mt-16" aria-hidden="true" />
         <section id="ignis-console" aria-label="Ignis console" className="relative mt-24 flex h-[85vh] min-h-[560px] flex-col scroll-mt-16 sm:mt-32">
           <SimConsole presets={MISSION_PRESETS} />
         </section>

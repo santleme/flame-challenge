@@ -183,7 +183,7 @@ export default function Composer({
               resizeTextarea(event.currentTarget)
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault()
                 send()
               }

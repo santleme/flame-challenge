@@ -87,10 +87,13 @@ describe('AgentTurn and IgnisSprite integration', () => {
     }
 
     const html = renderToString(React.createElement(AgentTurn, { turn: completedTurn, live: false }))
+    // param highlighting splits the briefing into spans — assert on the
+    // visible text, not the tag-interleaved markup
+    const text = html.replace(/<[^>]+>/g, '')
     expect(html).toContain('Ignis')
     expect(html).toContain('Connected')
-    expect(html).toContain('Ignition confirmed under 21% O2.')
-    expect(html).toContain('Check quench distance')
+    expect(text).toContain('Ignition confirmed under 21% O2.')
+    expect(text).toContain('Check quench distance')
     expect(html).toContain('42')
     expect(html).toContain('set_o2_percent')
     expect(html).toContain('PSI-TEST-1')
@@ -117,5 +120,50 @@ describe('AgentTurn and IgnisSprite integration', () => {
     const html = renderToString(React.createElement(AgentTurn, { turn: nanTurn, live: false }))
     expect(html).not.toContain('Risk index')
     expect(html).not.toContain('NaN')
+  })
+
+  it('renders SUPPRESS_LOCAL as recommendation-only text without an apply button', () => {
+    const suppressTurn: AgentTurnModel = {
+      kind: 'agent',
+      id: 4,
+      pending: false,
+      tools: [],
+      briefing: 'Operating below LOC margin.',
+      action: 'SUPPRESS_LOCAL',
+      run: null,
+      mode: 'llm',
+      model: 'qwen',
+      engine: 'c++',
+      riskIndex: 0.15,
+      evidence: [],
+      ms: 80,
+    }
+
+    const html = renderToString(React.createElement(AgentTurn, { turn: suppressTurn, live: false }))
+    expect(html).toContain('SUPPRESS_LOCAL')
+    expect(html).not.toContain('Apply protocol: SUPPRESS_LOCAL')
+  })
+
+  it('renders executable protocol with an apply button', () => {
+    const cutTurn: AgentTurnModel = {
+      kind: 'agent',
+      id: 5,
+      pending: false,
+      tools: [],
+      briefing: 'High flow spread risk detected.',
+      action: 'CUT_VENTILATION',
+      run: null,
+      mode: 'llm',
+      model: 'qwen',
+      engine: 'c++',
+      riskIndex: 0.65,
+      evidence: [],
+      ms: 80,
+    }
+
+    const html = renderToString(React.createElement(AgentTurn, { turn: cutTurn, live: false }))
+    expect(html).toContain('Apply protocol:')
+    expect(html).toContain('CUT_VENTILATION')
+    expect(html).toContain('<button type="button"')
   })
 })

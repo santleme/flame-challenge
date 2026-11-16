@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   ALL_THEMES,
   DATASET_STATS,
@@ -262,99 +262,98 @@ export default function PsiDataset() {
               <tbody>
                 {filtered.map((inv) => {
                   const expanded = open === inv.id
-                  return [
-                    <tr
-                      key={inv.id}
-                      className="row-hover"
-                    >
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-tiny font-medium lowercase tracking-label text-ink">
-                        <Button
-                          type="button"
-                          variant="row"
-                          size="sm"
-                          aria-expanded={expanded}
-                          onClick={() => setOpen(expanded ? null : inv.id)}
-                          className="dataset-expand justify-start gap-2 text-left font-mono text-tiny font-medium lowercase tracking-label"
-                        >
-                          <span className="inline-block w-3 text-accent">
-                            {expanded ? '−' : '+'}
+                  return (
+                    <Fragment key={inv.id}>
+                      <tr className="row-hover">
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-tiny font-medium lowercase tracking-label text-ink">
+                          <Button
+                            type="button"
+                            variant="row"
+                            size="sm"
+                            aria-expanded={expanded}
+                            onClick={() => setOpen(expanded ? null : inv.id)}
+                            className="dataset-expand justify-start gap-2 text-left font-mono text-tiny font-medium lowercase tracking-label"
+                          >
+                            <span className="inline-block w-3 text-accent">
+                              {expanded ? '−' : '+'}
+                            </span>
+                            {inv.name.toLowerCase()}
+                          </Button>
+                        </td>
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-micro lowercase tracking-label text-ink opacity-70">
+                          {inv.themes.map((t) => THEME_LABELS[t] ?? t).join(' · ')}
+                        </td>
+                        <td className="max-w-[220px] truncate border-b border-edge px-2 py-2.5 text-mini lowercase text-ink opacity-75">
+                          {inv.fuels.join(', ')}
+                        </td>
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
+                          {fmtO2(inv)}
+                        </td>
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
+                          {fmtFlow(inv)}
+                        </td>
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
+                          {inv.psiRuns ?? '—'}
+                        </td>
+                        <td className="border-b border-edge px-2 py-2.5 font-mono text-mini">
+                          <span
+                            className={inv.verified ? 'text-accent' : 'text-ink opacity-40'}
+                            title={inv.verified ? 'pipeline-ingested psi data' : 'curated from public literature'}
+                          >
+                            {inv.verified ? 'verified' : 'curated'}
                           </span>
-                          {inv.name.toLowerCase()}
-                        </Button>
-                      </td>
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-micro lowercase tracking-label text-ink opacity-70">
-                        {inv.themes.map((t) => THEME_LABELS[t] ?? t).join(' · ')}
-                      </td>
-                      <td className="max-w-[220px] truncate border-b border-edge px-2 py-2.5 text-mini lowercase text-ink opacity-75">
-                        {inv.fuels.join(', ')}
-                      </td>
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
-                        {fmtO2(inv)}
-                      </td>
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
-                        {fmtFlow(inv)}
-                      </td>
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-mini text-ink opacity-75">
-                        {inv.psiRuns ?? '—'}
-                      </td>
-                      <td className="border-b border-edge px-2 py-2.5 font-mono text-mini">
-                        <span
-                          className={inv.verified ? 'text-accent' : 'text-ink opacity-40'}
-                          title={inv.verified ? 'pipeline-ingested psi data' : 'curated from public literature'}
-                        >
-                          {inv.verified ? 'verified' : 'curated'}
-                        </span>
-                      </td>
-                    </tr>,
-                    expanded ? (
-                      <tr key={`${inv.id}-detail`} className="bg-accent/4">
-                        <td colSpan={7} className="border-b border-edge px-2 py-4">
-                          <div className="grid gap-4 pl-8 sm:grid-cols-2 lg:grid-cols-3">
-                            <div>
-                              <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
-                                objectives
-                              </div>
-                              <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-mini leading-relaxed text-ink opacity-80">
-                                {inv.objectives.map((o) => (
-                                  <li key={o.slice(0, 32)}>· {o}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
-                                rig &amp; sensors
-                              </div>
-                              <p className="m-0 mt-1.5 text-mini leading-relaxed text-ink opacity-80">
-                                {inv.apparatus}
-                              </p>
-                              <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-mini leading-relaxed text-ink opacity-70">
-                                {inv.sensors.map((s) => (
-                                  <li key={s}>· {s}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div className="sm:col-span-2 lg:col-span-1">
-                              <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
-                                within-investigation variation
-                              </div>
-                              <p className="m-0 mt-1.5 text-mini leading-relaxed text-ink opacity-80">
-                                <span className="opacity-60">held:</span>{' '}
-                                {inv.testVariables.held.join(' · ')}
-                              </p>
-                              <p className="m-0 mt-1 text-mini leading-relaxed text-ink opacity-80">
-                                <span className="opacity-60">varied:</span>{' '}
-                                {inv.testVariables.varied.join(' · ')}
-                              </p>
-                              <p className="m-0 mt-2 font-mono text-micro lowercase tracking-label text-ink opacity-50">
-                                {inv.platform}
-                                {inv.facility ? ` · ${inv.facility}` : ''} · {inv.years}
-                              </p>
-                            </div>
-                          </div>
                         </td>
                       </tr>
-                    ) : null,
-                  ]
+                      {expanded && (
+                        <tr key={`${inv.id}-detail`} className="bg-accent/4">
+                          <td colSpan={7} className="border-b border-edge px-2 py-4">
+                            <div className="grid gap-4 pl-8 sm:grid-cols-2 lg:grid-cols-3">
+                              <div>
+                                <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
+                                  objectives
+                                </div>
+                                <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-mini leading-relaxed text-ink opacity-80">
+                                  {inv.objectives.map((o) => (
+                                    <li key={o.slice(0, 32)}>· {o}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div>
+                                <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
+                                  rig &amp; sensors
+                                </div>
+                                <p className="m-0 mt-1.5 text-mini leading-relaxed text-ink opacity-80">
+                                  {inv.apparatus}
+                                </p>
+                                <ul className="m-0 mt-1.5 list-none space-y-1 p-0 text-mini leading-relaxed text-ink opacity-70">
+                                  {inv.sensors.map((s) => (
+                                    <li key={s}>· {s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div className="sm:col-span-2 lg:col-span-1">
+                                <div className="font-mono text-micro lowercase tracking-eyebrow text-accent">
+                                  within-investigation variation
+                                </div>
+                                <p className="m-0 mt-1.5 text-mini leading-relaxed text-ink opacity-80">
+                                  <span className="opacity-60">held:</span>{' '}
+                                  {inv.testVariables.held.join(' · ')}
+                                </p>
+                                <p className="m-0 mt-1 text-mini leading-relaxed text-ink opacity-80">
+                                  <span className="opacity-60">varied:</span>{' '}
+                                  {inv.testVariables.varied.join(' · ')}
+                                </p>
+                                <p className="m-0 mt-2 font-mono text-micro lowercase tracking-label text-ink opacity-50">
+                                  {inv.platform}
+                                  {inv.facility ? ` · ${inv.facility}` : ''} · {inv.years}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
                 })}
               </tbody>
             </table>

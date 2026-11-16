@@ -25,6 +25,9 @@ function initialTheme(): Theme {
   }
 }
 
+const isDashboardRoute = (h: string) =>
+  h === 'dashboard' || h.startsWith('dashboard-') || h === 'mission-reports'
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme)
   // '#psi-dataset' and '#simulations' swap the whole
@@ -34,7 +37,7 @@ export default function App() {
   const [view, setView] = useState<'main' | 'psi' | 'sim' | 'dashboard'>(() => {
     const h = location.hash.slice(1)
     if (h === 'psi-dataset') return 'psi'
-    if (h === 'dashboard' || h.startsWith('dashboard-')) return 'dashboard'
+    if (isDashboardRoute(h)) return 'dashboard'
     if (h === 'simulations' || isSimChild(h)) return 'sim'
     return 'main'
   })
@@ -46,7 +49,7 @@ export default function App() {
         setView('psi')
         return
       }
-      if (name === 'dashboard' || name.startsWith('dashboard-')) {
+      if (isDashboardRoute(name)) {
         setView('dashboard')
         return
       }

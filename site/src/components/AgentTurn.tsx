@@ -1,5 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { navigate } from '../lib/scroll'
 import type { AgentTurnModel } from '../lib/simConsole'
+import {
+  FALLBACK_INVESTIGATIONS,
+  type SiChamberState,
+  type SiEvidence,
+  type SiSimulationCommands,
+} from '../lib/api'
+import { riskIndexLocal } from '../lib/risk'
 import IgnisSprite from './IgnisSprite'
 
 /** rotating status quips while the copilot thinks — dry mission-log humor */
@@ -22,13 +30,140 @@ const WORKING_QUIPS = [
   'Purging nitrogen. And doubts.',
 ]
 
+const SUP_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+const sup = (n: number) =>
+  String(n)
+    .split('')
+    .map((d) => SUP_DIGITS[Number(d)])
+    .join('')
+
+export function computeMaterialAwareO2Target(chamber?: SiChamberState): number {
+  if (!chamber) return 14
+  const matId =
+    chamber.materialId ??
+    (chamber.investigationId ? FALLBACK_INVESTIGATIONS[chamber.investigationId]?.materialId : null) ??
+    'pmma'
+  const loc = riskIndexLocal(
+    matId,
+    chamber.o2Pct ?? 21,
+    chamber.flowCms ?? 0,
+    chamber.gravity ?? 'microgravity',
+  ).locPct
+  return Math.max(0, Math.min(Math.round((loc + 1) * 10) / 10, (chamber.o2Pct ?? 21) - 1))
+}
+
+/** converts recognized protocol codes into concrete simulation commands */
+export function protocolToCommands(
+  action: string | null | undefined,
+  commands?: SiSimulationCommands | null,
+  chamber?: SiChamberState,
+): SiSimulationCommands | null {
+  if (!action) return null
+  const code = action.trim().toUpperCase()
+  switch (code) {
+    case 'CUT_VENTILATION':
+      return { set_airflow_cm_s: typeof commands?.set_airflow_cm_s === 'number' ? commands.set_airflow_cm_s : 0 }
+    case 'REDUCE_O2': {
+      const targetO2 =
+        typeof commands?.set_o2_percent === 'number'
+          ? commands.set_o2_percent
+          : computeMaterialAwareO2Target(chamber)
+      return { set_o2_percent: targetO2 }
+    }
+    case 'COOL_AND_ISOLATE':
+      return { trigger_containment: commands?.trigger_containment ?? 'sealed' }
+    // SUPPRESS_LOCAL is crew advisory only (portable extinguisher / localized response);
+    // it has no automated chamber actuator and remains recommendation-only text.
+    case 'SUPPRESS_LOCAL':
+    default:
+      return null
+  }
+}
+
+/** physical quantities the prose sets in medium ink instead of a chip */
+const PARAM_RE =
+  /(\d+(?:[.,]\d+)?\s?%(?:\s?O₂)?|\d+(?:[.,]\d+)?\s?cm\/s\b|\d+(?:[.,]\d+)?\s?K\b|\d+(?:[.,]\d+)?\s?psia\b|\bLOC\b|O₂|N₂|CO₂)/g
+
+/** one footnote per accession — the neighbors feed can repeat a run */
+function dedupeEvidence(evidence: SiEvidence[]): SiEvidence[] {
+  const seen = new Set<string>()
+  return evidence.filter((e) => {
+    const key = e.accession || e.runId
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** first span in the briefing where each cited experiment is named */
+function citeSpans(text: string, evidence: SiEvidence[]): { start: number; end: number; index: number }[] {
+  const spans: { start: number; end: number; index: number }[] = []
+  evidence.forEach((e, index) => {
+    const terms = [e.accession, e.investigationId]
+      .filter((t): t is string => Boolean(t && t.length > 2))
+      .map((t) => escapeRe(t).replace(/[-_]/g, '[-_\\s]?'))
+    if (!terms.length) return
+    const re = new RegExp(`\\b(?:${terms.join('|')})\\b`, 'i')
+    const m = re.exec(text)
+    if (m) spans.push({ start: m.index, end: m.index + m[0].length, index })
+  })
+  return spans.sort((a, b) => a.start - b.start)
+}
+
+/** prose with physical params in medium ink + superscript run markers */
+function renderBriefing(text: string, evidence: SiEvidence[]): ReactNode {
+  const spans = citeSpans(text, evidence).filter(
+    (s, i, all) => i === 0 || s.start >= all[i - 1].end,
+  )
+  const out: ReactNode[] = []
+  let cursor = 0
+  let key = 0
+
+  const pushParams = (chunk: string) => {
+    if (!chunk) return
+    const parts = chunk.split(PARAM_RE)
+    parts.forEach((part, i) => {
+      if (!part) return
+      if (i % 2 === 1) {
+        out.push(
+          <span key={key++} className="font-medium text-ink">
+            {part}
+          </span>,
+        )
+      } else {
+        out.push(part)
+      }
+    })
+  }
+
+  for (const s of spans) {
+    pushParams(text.slice(cursor, s.start))
+    pushParams(text.slice(s.start, s.end))
+    out.push(
+      <sup key={key++} className="ml-px font-mono text-[10px] text-accent">
+        {sup(s.index + 1)}
+      </sup>,
+    )
+    cursor = s.end
+  }
+  pushParams(text.slice(cursor))
+  return out
+}
+
 export default function AgentTurn({
   turn,
+  onApply,
+  chamber,
 }: {
   turn: AgentTurnModel
   live?: boolean
+  chamber?: SiChamberState
+  onApply?: (sim: SiSimulationCommands) => void
 }) {
   const [quip, setQuip] = useState(0)
+  const [applied, setApplied] = useState(false)
   useEffect(() => {
     if (!turn.pending) return
     setQuip(Math.floor(Math.random() * WORKING_QUIPS.length))
@@ -48,89 +183,205 @@ export default function AgentTurn({
     )
   }
 
+  const evidence = dedupeEvidence(turn.evidence ?? [])
+  const riskPct =
+    turn.riskIndex != null && !Number.isNaN(turn.riskIndex)
+      ? Math.round(turn.riskIndex * 100)
+      : null
+  const executableCommands = protocolToCommands(turn.action, turn.commands, chamber)
+
+  const applyProtocol = () => {
+    if (!executableCommands) return
+    onApply?.(executableCommands)
+    setApplied(true)
+  }
+
+  const loadRun = (e: SiEvidence) => {
+    const sim: SiSimulationCommands = {}
+    if (e.investigationId) sim.load_preset = e.investigationId
+    if (typeof e.o2Pct === 'number') sim.set_o2_percent = e.o2Pct
+    if (typeof e.flowCms === 'number') sim.set_airflow_cm_s = e.flowCms
+    if (Object.values(sim).some((v) => v != null)) onApply?.(sim)
+  }
+
   return (
-    <div className="flex w-full flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-ink/65">
-        <span className="h-2 w-2 rounded-full bg-accent shadow-[0_0_0_3px_rgba(73,184,214,.12)]" />
+    <div className="w-full">
+      {/* — agent identity — mono micro, no chrome */}
+      <div className="flex items-baseline gap-3 font-mono text-micro uppercase tracking-label text-ink/50">
         <span className="font-semibold text-ink/80">Ignis</span>
         {turn.mode && <span>{turn.mode === 'llm' ? 'Connected' : 'Local response'}</span>}
+        {turn.engine && <span className="ml-auto normal-case">{turn.engine} engine</span>}
       </div>
 
-      {(turn.tools ?? []).length > 0 && (
-        <details className="group rounded-2xl border border-edge/60 bg-panel/60 px-4 py-2 shadow-[0_1px_2px_rgba(23,33,43,0.05)] backdrop-blur-sm transition-colors hover:border-edge/90 dark:bg-white/[0.04]" open={turn.tools.some((tool) => tool.live)}>
-          <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 text-sm text-ink/80 focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
-            <span className="font-medium">Engine actions</span>
-            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 font-mono text-micro font-semibold text-accent">{turn.tools.length}</span>
-            {turn.engine && <span className="ml-auto font-mono text-tiny uppercase tracking-label text-ink/45">{turn.engine} engine</span>}
-            <span aria-hidden="true" className="text-ink/45 transition-transform duration-300 group-open:rotate-180">⌄</span>
-          </summary>
-          <div className="mt-1.5 border-t border-edge/50 pt-1.5">
-          {turn.tools.map((t, i) => (
-            <div key={i} className="flex min-h-9 flex-wrap items-center gap-x-2.5 gap-y-1 py-1.5">
-              {t.live ? (
-                <span aria-label="Running" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
-              ) : (
-                <span aria-label="Complete" className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">✓</span>
+      {/* — asymmetric grid: naked telemetry margin + editorial prose — */}
+      <div className="mt-4 grid grid-cols-1 gap-x-10 gap-y-7 sm:grid-cols-[140px_1fr]">
+        <div>
+          {riskPct != null && (
+            <div>
+              <div className="font-chat-sans text-[56px] font-light leading-none tracking-tight tabular-nums text-ink">
+                {riskPct}
+                <span className="text-[26px] font-light text-ink/50">%</span>
+              </div>
+              <div className="relative mt-3 h-[2px] w-full bg-ink/10">
+                {turn.riskBand && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-0 bg-ink/50"
+                    style={{
+                      left: `${Math.max(0, Math.min(1, turn.riskBand.lower)) * 100}%`,
+                      width: `${Math.max(0, Math.min(1, turn.riskBand.upper) - Math.max(0, Math.min(1, turn.riskBand.lower))) * 100}%`,
+                    }}
+                  />
+                )}
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-[3px] h-[8px] w-[2px] bg-accent"
+                  style={{ left: `calc(${riskPct}% - 1px)` }}
+                />
+              </div>
+              <div className="mt-2.5 whitespace-nowrap font-mono text-micro uppercase tracking-label text-ink/45">
+                risk · psi-calibrated
+              </div>
+              {turn.riskBand && (
+                <div className="mt-0.5 font-mono text-micro tabular-nums text-ink/40">
+                  90% band {Math.round(turn.riskBand.lower * 100)}–{Math.round(turn.riskBand.upper * 100)}
+                </div>
               )}
-              <span className="font-mono text-sm text-ink/90">{t.name}</span>
-              {t.arg && <span className="truncate font-mono text-sm text-ink/65">{t.arg}</span>}
-              <span className={`ml-auto flex-none text-sm ${t.live ? 'text-accent' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                {t.live ? 'running' : 'done'}
-              </span>
             </div>
-          ))}
-          </div>
-        </details>
-      )}
-
-      <p className="m-0 font-chat-sans text-[15px] leading-7 tracking-[-0.01em] text-ink/85">{turn.briefing}</p>
-      {turn.action && (
-        <p className="m-0 flex items-start gap-2 rounded-xl border-l-2 border-accent/60 bg-accent/[0.05] px-3 py-2 font-chat-sans text-sm leading-relaxed text-ink/75"><span className="font-mono text-micro font-bold uppercase tracking-label text-accent">Next</span>{turn.action}</p>
-      )}
-
-      {turn.riskIndex != null && !Number.isNaN(turn.riskIndex) && (
-        <div className="flex items-center gap-4 rounded-2xl border border-edge/60 bg-gradient-to-br from-ink/[0.05] to-transparent px-5 py-4 shadow-[0_1px_2px_rgba(23,33,43,0.05)] dark:from-white/[0.06]">
-          <span className="font-display text-4xl font-bold tabular-nums leading-none tracking-tight text-amber-700 dark:text-amber-300">
-            {Math.round(turn.riskIndex * 100)}
-            <span className="text-xl font-semibold opacity-60">%</span>
-          </span>
-          <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-tiny font-semibold uppercase tracking-label text-ink/60">risk index</span>
-            <span className="font-mono text-micro uppercase tracking-label text-ink/40">fitted model · PSI-calibrated</span>
-          </span>
+          )}
         </div>
-      )}
 
-      {(turn.evidence ?? []).length > 0 && (
-        <details className="group rounded-2xl border border-edge/60 bg-panel/60 px-4 py-2.5 text-sm text-ink/70 shadow-[0_1px_2px_rgba(23,33,43,0.05)] backdrop-blur-sm transition-colors hover:border-edge/90 dark:bg-white/[0.04]">
-          <summary className="flex min-h-7 cursor-pointer list-none items-center gap-2 focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
-            <span className="font-mono text-tiny font-semibold uppercase tracking-label text-ink/60">NASA PSI evidence</span>
-            <span className="rounded-full border border-edge/70 bg-bg/70 px-2 py-0.5 font-mono text-micro text-ink/55">{turn.evidence.length} {turn.evidence.length === 1 ? 'run' : 'runs'}</span>
-            <span aria-hidden="true" className="ml-auto text-ink/45 transition-transform duration-300 group-open:rotate-180">⌄</span>
-          </summary>
-          <ul className="mb-1 mt-2 space-y-1.5 border-t border-edge/50 pl-1 pt-2.5 font-mono text-[13px]">
-            {turn.evidence.map((item, i) => (
-              <li key={`${item.accession}-${item.runId ?? i}-${i}`}>
-                {item.sourceUrl ? <a className="text-link underline decoration-link/30 underline-offset-2 transition-colors hover:decoration-link" href={item.sourceUrl} target="_blank" rel="noreferrer">{item.accession} · {item.fuel} · {item.outcome}</a> : `${item.accession} · ${item.fuel} · ${item.outcome}`}
-              </li>
+        <div className="min-w-0 max-w-[62ch]">
+          <p className="m-0 font-chat-sans text-[15px] leading-7 tracking-[-0.01em] text-ink/80">
+            {renderBriefing(turn.briefing, evidence)}
+          </p>
+
+          {turn.action && (
+            executableCommands ? (
+              <button
+                type="button"
+                onClick={applyProtocol}
+                className="group mt-4 flex items-center gap-2.5 border-none bg-transparent p-0 text-left font-mono text-[13px] text-ink/75 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 flex-none rounded-full ${applied ? 'bg-emerald-600' : 'animate-pulse bg-accent motion-reduce:animate-none'}`}
+                />
+                <span className="relative">
+                  <span
+                    aria-hidden="true"
+                    className="mr-2 inline-block transition-transform duration-200 group-hover:translate-x-1"
+                  >
+                    ↳
+                  </span>
+                  Apply protocol:{' '}
+                  <span className="font-semibold uppercase tracking-micro">{turn.action.trim()}</span>
+                  {applied && <span className="text-ink/45"> · applied</span>}
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-1 left-0 h-px w-0 bg-ink transition-[width] duration-300 group-hover:w-full"
+                  />
+                </span>
+              </button>
+            ) : (
+              <p className="m-0 mt-4 flex items-baseline gap-2.5 font-mono text-[13px] text-ink/75">
+                <span aria-hidden="true" className="h-1.5 w-1.5 flex-none self-center rounded-full bg-ink/40" />
+                <span>
+                  <span aria-hidden="true" className="mr-2">↳</span>
+                  {turn.action}
+                </span>
+              </p>
+            )
+          )}
+
+          {(turn.tools ?? []).length > 0 && (
+            <details
+              className="group mt-6"
+              open={turn.tools.some((tool) => tool.live)}
+            >
+              <summary className="flex min-h-7 cursor-pointer list-none items-center gap-3 font-mono text-micro uppercase tracking-label text-ink/50 focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+                <span>engine actions</span>
+                <span className="tabular-nums text-ink/40">{turn.tools.length}</span>
+                <span aria-hidden="true" className="h-px flex-1 bg-ink/10" />
+                <span aria-hidden="true" className="transition-transform duration-300 group-open:rotate-180">⌄</span>
+              </summary>
+              <ul className="m-0 mt-1 list-none p-0 font-mono text-[13px]">
+                {turn.tools.map((t, i) => (
+                  <li key={i} className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 border-t border-ink/10 py-2">
+                    {t.live ? (
+                      <span aria-label="Running" className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent motion-reduce:animate-none" />
+                    ) : (
+                      <span aria-label="Complete" className="text-emerald-700 dark:text-emerald-300">✓</span>
+                    )}
+                    <span className="text-ink/90">{t.name}</span>
+                    {t.arg && <span className="truncate text-ink/50">{t.arg}</span>}
+                    <span className={`ml-auto flex-none ${t.live ? 'text-accent' : 'text-ink/45'}`}>
+                      {t.live ? 'running' : 'done'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {turn.run && (
+            <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[13px]">
+              <span className="text-ink/80">
+                run queued{turn.run.presetId ? ` · ${turn.run.presetId}` : ''}
+                {turn.run.o2Pct != null ? ` · O₂ ${turn.run.o2Pct}%` : ''}
+                {turn.run.flowCms != null ? ` · ${turn.run.flowCms} cm/s` : ''}
+              </span>
+              <a
+                href="#dashboard-reports"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('#dashboard-reports')
+                }}
+                className="text-link no-underline underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                view dashboards →
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* — scientific footnotes: hairline rule + superscript index, no box — */}
+      {evidence.length > 0 && (
+        <div className="mt-7 border-t border-ink/10 pt-3">
+          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+            {evidence.map((item, i) => (
+              <span key={`${item.accession}-${i}`} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
+                <sup className="text-[10px] text-accent">{sup(i + 1)}</sup>
+                {item.sourceUrl && item.verified ? (
+                  <a
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`View ${item.accession} on NASA PSI`}
+                    className="text-ink/65 underline decoration-ink/20 underline-offset-4 transition-colors hover:text-ink hover:decoration-ink focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    {item.accession} · {item.fuel} ({item.outcome})
+                    <span aria-hidden="true" className="ml-1 text-[10px] text-ink/40">↗</span>
+                  </a>
+                ) : (
+                  <span className="text-ink/65">
+                    {item.accession} · {item.fuel} ({item.outcome})
+                  </span>
+                )}
+                {onApply && (
+                  <button
+                    type="button"
+                    onClick={() => loadRun(item)}
+                    title="Load these test conditions into the simulation chamber"
+                    className="border-none bg-transparent p-0 font-mono text-micro tracking-micro text-ink/40 transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    ↳ simulate
+                  </button>
+                )}
+              </span>
             ))}
-          </ul>
-        </details>
-      )}
-
-      {turn.run && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3 shadow-[0_1px_2px_rgba(73,184,214,0.12)]">
-          <div className="min-w-0 flex-1 font-mono text-[13px] text-ink/75">
-            Run queued{turn.run.presetId ? ` · ${turn.run.presetId}` : ''}
-            {turn.run.o2Pct != null ? ` · O₂ ${turn.run.o2Pct}%` : ''}
-            {turn.run.flowCms != null ? ` · ${turn.run.flowCms} cm/s` : ''}
           </div>
-          <a
-            href="#dashboard-reports"
-            className="flex-none rounded-full bg-ink px-4 py-2 font-mono text-xs font-semibold lowercase tracking-micro text-bg shadow-sm transition-all hover:-translate-y-px hover:bg-accent hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            view dashboards →
-          </a>
         </div>
       )}
     </div>
