@@ -460,6 +460,21 @@ export default function MissionReportsPanel() {
     return () => window.removeEventListener('ignis:dashboard-generated', sync)
   }, [])
 
+  // deep link: '#dashboard-reports' (the console's "view dashboards" hop)
+  // routes to the dashboard view — scroll the panel into view on mount
+  // so the operator lands on the brief, not the page top
+  useEffect(() => {
+    if (location.hash !== '#dashboard-reports') return
+    const t = setTimeout(
+      () =>
+        document
+          .getElementById('mission-reports')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      60,
+    )
+    return () => clearTimeout(t)
+  }, [])
+
   const filtered = useMemo(() => reports.filter((r) => matchesRegime(r, regime)), [reports, regime])
   const current = filtered.find((r) => r.id === selectedId) ?? filtered[0]
   const critical = reports.filter((r) => r.spec.rubric.rank.level === 'critical').length

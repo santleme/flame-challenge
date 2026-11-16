@@ -121,7 +121,7 @@ export default function AgentTurn({
             {turn.run.flowCms != null ? ` · ${turn.run.flowCms} cm/s` : ''}
           </div>
           <a
-            href="#dashboard"
+            href="#dashboard-reports"
             className="flex-none rounded-full bg-[#1e3fae] px-4 py-2 font-mono text-xs font-semibold text-white transition-colors hover:bg-[#2a52d4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             view dashboards →

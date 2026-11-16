@@ -646,22 +646,80 @@ async def answer(message: str, state: ChamberState) -> dict:
         resp = await asyncio.to_thread(_offline_response, state, packet)
         mode = "offline-fallback"
     resp = resp.normalize()
+    # the chamber block is the operating point the response *evaluates*.
+    # The packet always scores the sent state — but when the copilot also
+    # emits commands that retune the run (load_preset/O2/flow/gravity),
+    # the point the operator asked about is the post-command one. Rebuild
+    # the factual context for that target so briefing, evidence,
+    # uncertainty band and chamber score all describe ONE evaluation
+    # (mirrors the browser fallback, which scores the resolved scenario).
+    scored = {
+        "investigationId": state.investigationId,
+        "materialId": packet["material"]["materialId"],
+        "o2Pct": state.o2Pct,
+        "flowCms": state.flowCms,
+        "gravity": state.gravity,
+        "riskIndex": packet["material"]["riskIndex"],
+        "level": packet["material"]["level"],
+        "uncertainty": packet["material"].get("uncertainty"),
+    }
+    neighbors = packet["neighbors"]
+    sim = resp.simulation_commands
+    retunes = sim is not None and (
+        sim.load_preset is not None
+        or sim.set_o2_percent is not None
+        or sim.set_airflow_cm_s is not None
+        or sim.set_gravity_g is not None
+    )
+    if retunes:
+        post = state.model_copy()
+        if sim.load_preset is not None:
+            post.investigationId = sim.load_preset
+            post.materialId = None  # re-derive from the new rig's spec
+        if sim.set_o2_percent is not None:
+            post.o2Pct = sim.set_o2_percent
+        if sim.set_airflow_cm_s is not None:
+            post.flowCms = sim.set_airflow_cm_s
+        if sim.set_gravity_g is not None:
+            post.gravity = gravity_regime(sim.set_gravity_g)
+        packet2 = await asyncio.to_thread(factual_packet, post)
+        mat = packet2["material"]
+        neighbors = packet2["neighbors"]
+        scored = {
+            "investigationId": post.investigationId,
+            "materialId": mat["materialId"],
+            "o2Pct": post.o2Pct,
+            "flowCms": post.flowCms,
+            "gravity": post.gravity,
+            "riskIndex": mat["riskIndex"],
+            "level": mat["level"],
+            "uncertainty": mat.get("uncertainty"),
+        }
+        if mode == "offline-fallback":
+            # the deterministic brief was narrated for the sent state —
+            # regenerate it for the executed point so the abstract and
+            # the score tell the same story; decided commands stand
+            resp.briefing = _offline_response(post, packet2).briefing
+        elif len(resp.briefing) < 1700:
+            # LLM text stays the operator-facing answer; append the
+            # target-state evaluation so score and story agree
+            u = mat.get("uncertainty")
+            band = (f" Empirical band {u['lower'] * 100:.0f}–"
+                    f"{u['upper'] * 100:.0f}% (90% conformal)."
+                    if u else "")
+            resp.briefing += (
+                f" Post-command point — {post.investigationId} · "
+                f"{mat['materialId']} at {post.o2Pct}% O₂ / "
+                f"{post.flowCms} cm/s ({post.gravity}): risk "
+                f"{mat['riskIndex'] * 100:.0f}% {mat['level']}.{band}"
+            )
     return {
         **resp.model_dump(),
         "mode": mode,
         "model": _env("NINE_ROUTER_MODEL", "auto") if mode == "llm"
                  else "deterministic",
         "engine": packet["engine"],
-        "chamber": {
-            "investigationId": state.investigationId,
-            "materialId": packet["material"]["materialId"],
-            "o2Pct": state.o2Pct,
-            "flowCms": state.flowCms,
-            "gravity": state.gravity,
-            "riskIndex": packet["material"]["riskIndex"],
-            "level": packet["material"]["level"],
-            "uncertainty": packet["material"].get("uncertainty"),
-        },
+        "chamber": scored,
         "evidence": [
             {
                 "runId": n["runId"],
@@ -673,7 +731,7 @@ async def answer(message: str, state: ChamberState) -> dict:
                 "verified": n["verified"],
                 "sourceUrl": n["sourceUrl"],
             }
-            for n in packet["neighbors"]
+            for n in neighbors
         ],
     }
 
