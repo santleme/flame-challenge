@@ -257,9 +257,15 @@ export function HoverVideo({ src, poster, label, className }: { src: string; pos
   return <video ref={ref} className={className} src={src} poster={poster} aria-label={label} muted loop playsInline preload="auto" />
 }
 
+// the deck unmounts when the operator hops to #dashboard — keep the picked
+// envelope so returning shows the same mission, not the first card
+let cachedMission: MissionPreset | null = null
+
 export default function SimDeck() {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [activeMission, setActiveMission] = useState<MissionPreset>(MISSION_PRESETS[0])
+  const [activeMission, setActiveMission] = useState<MissionPreset>(
+    () => cachedMission ?? MISSION_PRESETS[0],
+  )
 
   useEffect(() => {
     const root = rootRef.current
@@ -280,6 +286,7 @@ export default function SimDeck() {
   // (chat turn + live chamber); scroll it into view so the operator sees it boot
   const loadMissionPreset = (preset: MissionPreset) => {
     setActiveMission(preset)
+    cachedMission = preset
     emitUiCommand({
       load_preset: preset.investigationId,
       set_o2_percent: preset.o2Pct,

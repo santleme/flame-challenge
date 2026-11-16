@@ -30,23 +30,50 @@ export interface SimPreset extends PresetCommandSource {
   prompt?: string
 }
 
+// sim and dashboard are exclusive views — following "view dashboards"
+// unmounts this console and plain useState would drop the whole chat and
+// chamber state on every round trip. Module-level cache keeps the session
+// alive across remounts (cleared on full reload, which is correct).
+let cachedMsgs: ChatMsg[] | null = null
+let cachedChamber: SiChamberState | null = null
+
 export default function SimConsole({ presets }: { presets: SimPreset[] }) {
-  const [msgs, setMsgs] = useState<ChatMsg[]>([])
-  const [chamber, setChamber] = useState<SiChamberState>(() => ({
-    investigationId: presets[0]?.investigationId ?? 'flex-2',
-    materialId: null,
-    o2Pct: presets[0]?.o2Pct ?? 21,
-    flowCms: presets[0]?.flowCms ?? null,
-    gravity: presets[0]?.gravity ?? 'microgravity',
-  }))
+  const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
+    (cachedMsgs ?? []).map((m) =>
+      // a pending turn can't resolve while unmounted — close it out so the
+      // composer isn't stuck busy and the row doesn't shimmer forever
+      m.kind === 'agent' && m.pending
+        ? { ...m, pending: false, briefing: m.briefing || 'reply lost — the view changed before it landed' }
+        : m,
+    ),
+  )
+  const [chamber, setChamber] = useState<SiChamberState>(
+    () =>
+      cachedChamber ?? {
+        investigationId: presets[0]?.investigationId ?? 'flex-2',
+        materialId: null,
+        o2Pct: presets[0]?.o2Pct ?? 21,
+        flowCms: presets[0]?.flowCms ?? null,
+        gravity: presets[0]?.gravity ?? 'microgravity',
+      },
+  )
   const chamberRef = useRef(chamber)
   chamberRef.current = chamber
   const busy = msgs.some((m) => m.kind === 'agent' && m.pending)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
-  const idRef = useRef(0)
+  // restored messages keep their ids — start the counter past them or
+  // new turns reuse keys React already rendered
+  const idRef = useRef(Math.max(0, ...(cachedMsgs ?? []).map((m) => m.id)))
   const nid = () => ++idRef.current
+
+  useEffect(() => {
+    cachedMsgs = msgs
+  }, [msgs])
+  useEffect(() => {
+    cachedChamber = chamber
+  }, [chamber])
 
   // the newest run-bearing turn owns the live chamber — flip its
   // chamber.run tool row to done when the stream completes or engine goes offline

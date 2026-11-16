@@ -71,6 +71,60 @@ def test_chat_high_margin_reduces_o2():
         assert j["ui_command"]["set_o2_percent"] < 35.0
 
 
+def test_retuned_commands_rescore_chamber():
+    """Commands that retune the run change the evaluated point — the
+    chamber block must describe the post-command scenario, not the stale
+    sent state (reports label what was actually run)."""
+    r = client.post("/api/si/chat",
+                    json={"message": "fire signature!",
+                          "current_chamber_state": STATE})
+    j = r.json()
+    # policy cut the 20 cm/s flow — chamber echoes the executed point
+    assert j["simulation_commands"]["set_airflow_cm_s"] == 0.0
+    assert j["chamber"]["flowCms"] == 0.0
+    assert j["chamber"]["materialId"] == "cotton"
+
+
+def test_llm_commands_rescore_chamber(monkeypatch):
+    """LLM preset+gravity commands → chamber scored at the new point, not
+    the incoming chamber."""
+    payload = {
+        "briefing": "switching rigs",
+        "recommended_action": "SUPPRESS_LOCAL",
+        "simulation_commands": {"load_preset": "flex-2",
+                                 "set_gravity_g": 0.17},
+    }
+
+    class _Msg:
+        content = json.dumps(payload)
+
+    class _Choice:
+        message = _Msg()
+
+    class _Completion:
+        choices = [_Choice()]
+
+    class _Completions:
+        async def create(self, **kwargs):
+            return _Completion()
+
+    class _Chat:
+        completions = _Completions()
+
+    class _Stub:
+        chat = _Chat()
+
+    monkeypatch.setattr(si, "_llm_client", lambda: _Stub())
+    r = client.post("/api/si/chat",
+                    json={"message": "run flex on the moon",
+                          "current_chamber_state": STATE})
+    j = r.json()
+    assert j["mode"] == "llm"
+    assert j["chamber"]["investigationId"] == "flex-2"
+    assert j["chamber"]["materialId"] == "heptane"
+    assert j["chamber"]["gravity"] == "lunar"
+
+
 def test_chat_validation_422():
     r = client.post("/api/si/chat",
                     json={"message": "hi",

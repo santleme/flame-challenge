@@ -646,22 +646,62 @@ async def answer(message: str, state: ChamberState) -> dict:
         resp = await asyncio.to_thread(_offline_response, state, packet)
         mode = "offline-fallback"
     resp = resp.normalize()
+    # the chamber block is the operating point the response *evaluates*.
+    # The packet always scores the sent state — but when the copilot also
+    # emits commands that retune the run (load_preset/O2/flow/gravity),
+    # the point the operator asked about is the post-command one. Re-score
+    # it so reports and the turn's risk chip describe the scenario being
+    # run, not the stale chamber (mirrors the browser fallback, which
+    # scores the resolved scenario).
+    scored = {
+        "investigationId": state.investigationId,
+        "materialId": packet["material"]["materialId"],
+        "o2Pct": state.o2Pct,
+        "flowCms": state.flowCms,
+        "gravity": state.gravity,
+        "riskIndex": packet["material"]["riskIndex"],
+        "level": packet["material"]["level"],
+        "uncertainty": packet["material"].get("uncertainty"),
+    }
+    sim = resp.simulation_commands
+    retunes = sim is not None and (
+        sim.load_preset is not None
+        or sim.set_o2_percent is not None
+        or sim.set_airflow_cm_s is not None
+        or sim.set_gravity_g is not None
+    )
+    if retunes:
+        post = state.model_copy()
+        if sim.load_preset is not None:
+            post.investigationId = sim.load_preset
+            post.materialId = None  # re-derive from the new rig's spec
+        if sim.set_o2_percent is not None:
+            post.o2Pct = sim.set_o2_percent
+        if sim.set_airflow_cm_s is not None:
+            post.flowCms = sim.set_airflow_cm_s
+        if sim.set_gravity_g is not None:
+            post.gravity = gravity_regime(sim.set_gravity_g)
+        r2 = await asyncio.to_thread(
+            risk.risk_index, post.resolved_material(),
+            post.o2Pct, post.flowCms, post.gravity,
+        )
+        scored = {
+            "investigationId": post.investigationId,
+            "materialId": post.resolved_material(),
+            "o2Pct": post.o2Pct,
+            "flowCms": post.flowCms,
+            "gravity": post.gravity,
+            "riskIndex": r2["riskIndex"],
+            "level": r2["level"],
+            "uncertainty": r2.get("uncertainty"),
+        }
     return {
         **resp.model_dump(),
         "mode": mode,
         "model": _env("NINE_ROUTER_MODEL", "auto") if mode == "llm"
                  else "deterministic",
         "engine": packet["engine"],
-        "chamber": {
-            "investigationId": state.investigationId,
-            "materialId": packet["material"]["materialId"],
-            "o2Pct": state.o2Pct,
-            "flowCms": state.flowCms,
-            "gravity": state.gravity,
-            "riskIndex": packet["material"]["riskIndex"],
-            "level": packet["material"]["level"],
-            "uncertainty": packet["material"].get("uncertainty"),
-        },
+        "chamber": scored,
         "evidence": [
             {
                 "runId": n["runId"],
