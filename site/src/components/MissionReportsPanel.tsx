@@ -449,7 +449,13 @@ export default function MissionReportsPanel() {
   const [regime, setRegime] = useState<Regime>('all')
 
   useEffect(() => {
-    const sync = () => setReports(getGeneratedDashboards())
+    const sync = (event: Event) => {
+      setReports(getGeneratedDashboards())
+      // a fresh live report takes focus — the run the operator just
+      // triggered should be what they see when they open the dashboard
+      const id = (event as CustomEvent<GeneratedDashboard>).detail?.id
+      if (id) setSelectedId(id)
+    }
     window.addEventListener('ignis:dashboard-generated', sync)
     return () => window.removeEventListener('ignis:dashboard-generated', sync)
   }, [])
