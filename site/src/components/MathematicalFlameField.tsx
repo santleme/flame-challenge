@@ -691,6 +691,12 @@ export default function MathematicalFlameField({
     <div
       aria-hidden="true"
       className="pointer-events-none absolute -bottom-12 -left-12 -right-12 -top-[130px] mix-blend-normal"
+      style={{
+        // the field is a hard rectangle — mask it so flames dissolve
+        // outward from the bar instead of clipping at the canvas edge
+        maskImage: 'radial-gradient(ellipse 72% 88% at 50% 74%, black 45%, transparent 76%)',
+        WebkitMaskImage: 'radial-gradient(ellipse 72% 88% at 50% 74%, black 45%, transparent 76%)',
+      }}
     >
       <canvas
         ref={canvasRef}
