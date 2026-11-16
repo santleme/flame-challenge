@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { gsap, navigate, ScrollTrigger } from '../lib/scroll'
 import Button from './ui/Button'
-import { IconMoon, IconSun } from './Icons'
+import { IconGithub, IconMoon, IconSun } from './Icons'
 
 interface Props {
   dark: boolean
@@ -237,6 +237,22 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
           >
             {dark ? <IconMoon size={16} /> : <IconSun size={16} />}
             {dark ? 'dark' : 'light'}
+          </Button>
+          <Button
+            asChild
+            variant="glass"
+            size="sm"
+            className="lowercase"
+          >
+            <a
+              href="https://github.com/santleme/flame-challenge"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="IGNIS source on GitHub"
+            >
+              <IconGithub size={16} />
+              github
+            </a>
           </Button>
         </div>
       </div>
