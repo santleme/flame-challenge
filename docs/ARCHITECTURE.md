@@ -3,10 +3,12 @@
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ data/ (Python pipelines)                                         │
-│   psi_search.py → raw PSI JSON    calibrate_constants.py         │
+│   psi_search.py → raw catalog     calibrate_constants.py         │
+│   psi_files.py  → raw test files  fit_risk_model.py              │
 │   ntrs_search.py → raw NTRS JSON  ──────────────┐                │
-│   build_dataset.py → data/bundle/*.json         ▼                │
-│                  shared/calibrated-data/*.json                   │
+│   normalize_experiments.py — raw + data/psi/    ▼                │
+│     legacy corpus → shared/calibrated-data/*.json                │
+│   build_dataset.py → data/bundle/*.json                          │
 └──────────────┬───────────────────────────────────────────────────┘
                │ materials + inv→model map
                ▼
@@ -23,14 +25,35 @@
 └──────────┬───────────────┘
            │ pybind11
            ▼
-┌──────────────────────────┐
-│ backend/ (FastAPI)       │  services/engine_bridge.py
-│  api/ + services/        │  loads freefall_engine .so +
-│  /health                 │  calibration.json
-│  /api/chamber/preview    │
-│  /api/materials          │  → HTTP /api/*, WS /ws/*
-│  /ws/chamber (30 Hz)     │    for API consumers
-└──────────────────────────┘
+┌─────────────────────────────────────────┐
+│ backend/ (FastAPI)                      │ services/engine_bridge.py
+│  api/main.py + services/                │ loads freefall_engine .so
+│  /health                                │ + calibration.json; pure-
+│  /api/chamber/preview · /api/materials  │ Python mirror in
+│  /ws/chamber (30 Hz)                    │ engine_fallback.py
+│  /api/search · /api/ask · /api/rag/stats│ rag.py — BM25 + DuckDB
+│  /api/risk(+curve/materials/rank)       │ SQL-RAG; risk.py +
+│  /api/investigations(+/{id},/matrix)    │ explain.py — conformal
+│  /api/insights                          │ intervals + exact
+│  /api/runs · /api/diff · /api/diffs     │ Shapley
+│  /api/neighbors · /api/decision-cards   │ neighbors.py + tactics.py
+│  /api/mission-reports/templates         │ si_copilot.py — factual
+│  /api/si/chat · /api/si/voice ·         │ packet → OpenAI-compat
+│    /api/si/voice-command                │ LLM/STT, offline fallback
+└──────────────┬──────────────────────────┘
+               │ HTTP /api/* + WS /ws/*
+               ▼
+┌─────────────────────────────────────────┐
+│ site/ (Vite + React 19)                 │
+│  landing (Hero/Challenge/Crew/Shipyard) │
+│  PsiDataset — corpus explorer           │
+│  SimDeck + SimConsole — agent console   │
+│    (chat + push-to-talk voice,          │
+│    ignis:* CustomEvents via simBus.ts)  │
+│  Dashboard — summarize·rank·interpret   │
+│  offline mirror: lib/risk.ts +          │
+│    data/psi_snapshot.json               │
+└─────────────────────────────────────────┘
 ```
 
 ## Data flow — a run experiment
@@ -46,6 +69,21 @@
 5. For live chamber telemetry, `WS /ws/chamber` streams `stateJson()`
    at 30 Hz — flame radius, spread front, regime transitions — ready for
    a dedicated chamber view.
+
+## Data flow — the SI console
+
+1. `SimConsole` (site) posts chat text to `/api/si/chat` and PTT audio to
+   `/api/si/voice-command` (`/api/si/voice` is the alternate envelope)
+   (`lib/voice.ts` transcodes MediaRecorder output to WAV PCM16 16 kHz).
+2. `si_copilot` first builds a deterministic factual packet — risk model
+   result, engine ignition pressure, 3 nearest PSI runs (`neighbors`),
+   tactics cards — then asks the configured OpenAI-compatible LLM for a
+   strict-JSON answer (`briefing` / `recommended_action` / `ui_command`).
+3. `simulation_commands` in the response fan out through
+   `emitSimulationCommands` → `ignis:ui-command` (`lib/simBus.ts`) to the
+   chamber/dashboard; `navigation` scrolls the page.
+4. LLM or STT sidecar down → deterministic offline fallback built on the
+   same packet, so the demo never hangs.
 
 ## Physics models (reduced order, calibrated to PSI records)
 

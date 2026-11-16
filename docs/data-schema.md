@@ -42,7 +42,7 @@ The merged dataset lives in a single JSON file (`data/bundle/investigations.json
 | `testVariables.held` / `.varied` | string[] | intra-experiment variation: controls vs swept parameters (dashboard attribute) |
 | `themes` | enum[] | `detection`, `suppression`, `duct-flow`, `partial-gravity`, `large-scale`, `spread`, `flammability` — the filter chips |
 | `conditions.suppressants` | string[] | optional — diluents tested (FLEX: N₂, CO₂, He) |
-| `hazards` | enum[] | see `HazardTag` in `src/types.ts` |
+| `hazards` | enum[] | `cool-flames`, `smolder-risk`, `detection-gap`, `exploration-atmosphere`, `large-scale-spread`, `low-oxygen-persistence`, `partial-gravity`, `toxic-aerosol` — `string[]` in `site/src/lib/api.ts` |
 | `data.availability` | `full`\|`partial`\|`metadata-only` | |
 | `data.psiUrl` | string\|null | PSI record link |
 | `publications` | number | rough count of related papers |
@@ -78,6 +78,9 @@ test files were parsed. `build_dataset.py` deep-merges them (nested
 ./.venv/bin/python data/pipelines/build_dataset.py          # merges structured records
 ./.venv/bin/python data/pipelines/build_dataset.py --sample # restore starter dataset
 ./.venv/bin/python data/pipelines/calibrate_constants.py    # dataset -> calibration.json
+./.venv/bin/python data/pipelines/build_master_sheet.py        # auditable master CSV + bundle/master_sheet.json
+./.venv/bin/python data/pipelines/build_investigation_diffs.py # -> bundle/investigation_diffs.json
+./.venv/bin/python data/pipelines/build_site_snapshot.py       # -> site/src/data/psi_snapshot.json
 ```
 
 Normalized per-run schema (`data/processed/experiments.csv`) is documented

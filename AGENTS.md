@@ -13,8 +13,8 @@ backend only — no client. See `docs/`.
   cool-flame regime), `airflow_propagator` (SAFFIRE-type spread with two
   extinction regimes), `material_risk` (ACME flammability matrix +
   `riskIndex`/`riskBreakdown` — the native composite inference head),
-  `chamber.hpp` aggregate API. `src/bindings.cpp` → pybind11 module;
-  `src/bindings_wasm.cpp` → Emscripten-ready embind.
+  `chamber.hpp` aggregate API. `bindings/python.cpp` → pybind11 module;
+  `bindings/wasm.cpp` → Emscripten-ready embind.
 - `data/` — Python ETL (`pipelines/`): `psi_search.py` (PSI catalog via
   `geode-py/ws`), `psi_files.py` (per-test data files), `ntrs_search.py`
   (citations + fulltext), `normalize_experiments.py` (unified CSV),
@@ -25,7 +25,11 @@ backend only — no client. See `docs/`.
   `pipelines/requirements-sci.txt`),
   `build_dataset.py`, `calibrate_constants.py` → `data/processed/` +
   `shared/calibrated-data/*.json` (canonical) + `data/bundle/` (merged
-  dataset + generated JSON artifacts)
+  dataset + generated JSON artifacts). `data/psi/` is a committed,
+  pre-normalized PSI corpus (catalog + processed CSVs, own README) that
+  `normalize_experiments.py` folds in via `parse_legacy_*` for
+  accessions the raw-file parsers never reached (BASS, SAFFIRE I–III,
+  FLEX test points, extra ACME).
 - `shared/` — contracts: `schemas/` JSON schemas + `calibrated-data/`
   (`calibration.json`, `risk_profiles.json` — the single source of truth
   for the C++ core)
@@ -34,6 +38,7 @@ backend only — no client. See `docs/`.
   retrieval/SQL-RAG, `risk.py` cabin simulator + conformal intervals,
   `explain.py` exact closed-form Shapley attribution, `investigations.py`
   scored leaderboard + detail + insights, `diff.py` run-pair differ,
+  `neighbors.py` k-NN over PSI runs, `tactics.py` decision cards,
   `si_copilot.py` conversational/voice SI):
   `/health`, `/api/chamber/preview`,
   `/api/materials`, `WS /ws/chamber` (30 Hz), `/api/search`, `/api/ask`,
@@ -41,7 +46,9 @@ backend only — no client. See `docs/`.
   `/api/investigations` (leaderboard), `/api/investigations/{id}`,
   `/api/investigations/matrix` (dashboard attribute feed),
   `/api/insights`, `/api/runs`, `/api/diff`, `/api/diffs`,
-  `/api/decision-cards`, `/api/neighbors`, `POST /api/si/chat`,
+  `/api/decision-cards`, `/api/neighbors`,
+  `/api/mission-reports/templates` (canonical demo reports),
+  `POST /api/si/chat`,
   `POST /api/si/voice` (multipart `audio` + `state`),
   `POST /api/si/voice-command` (flat voice-first envelope:
   `transcript` + `briefing` + `navigation.scroll_to_section`/
@@ -59,25 +66,40 @@ backend only — no client. See `docs/`.
   `backend/.env` (see `.env.example`): `NINE_ROUTER_BASE_URL`,
   `NINE_ROUTER_API_KEY`, `NINE_ROUTER_MODEL`, `STT_BASE_URL` (alias
   `WHISPER_CPP_URL`), `STT_API_KEY`, `STT_MODEL`.
-- `site/` — IGNIS dashboard (Vite + React 19 + Tailwind 4 + GSAP):
-  editorial hero/challenge + `#dashboard` section (summarize · rank ·
-  interpret pillars, theme-filtered investigation matrix, scenario risk
-  ranking, tactical cards, investigation diff) + `#mission-control`
-  SiConsole (chat + push-to-talk voice via MediaRecorder, applies
-  `ui_command` to chamber state, highlights decision card,
-  speechSynthesis readback) + global `VoiceHud` (hold-Space PTT
-  anywhere; `lib/voice.ts` transcodes to WAV PCM16 16kHz in-browser;
-  `ignis:ui-command` / `ignis:filter` / `ignis:voice-state` CustomEvents
-  fan commands out to LiveChamber/SiConsole/Insights;
-  `hooks/useMissionVoiceControl.ts` owns the recorder/uplink).
+- `site/` — IGNIS front end (Vite + React 19 + Tailwind 4 + GSAP):
+  editorial landing (Hero/Challenge/Crew/Shipyard) plus three overlay
+  views — `PsiDataset` (PSI corpus explorer), `SimDeck` (simulation
+  deck: investigation presets + generated mission reports from
+  `/api/mission-reports/templates`) and `Dashboard` (summarize ·
+  rank · interpret pillars + `MissionReportsPanel`). `SimConsole`
+  is the agent console: chat + push-to-talk voice via MediaRecorder
+  → `/api/si/chat` / `/api/si/voice-command`, `Composer` owns the recorder
+  and `lib/voice.ts` transcodes to WAV PCM16 16kHz in-browser; every
+  response becomes an `AgentTurn` whose `simulation_commands` fan out
+  through `emitSimulationCommands` → `ignis:ui-command`. Event bus in
+  `lib/simBus.ts` — CustomEvents `ignis:ui-command`, `ignis:sim-frame`,
+  `ignis:route`, `ignis:view`, `ignis:chamber-command-error`,
+  `ignis:chamber-complete`, `ignis:chamber-offline`,
+  `ignis:dashboard-generated`, `ignis:scroll-inner`.
   Offline fallback mirrors
-  the same fitted model via `src/lib/risk.ts` + `src/lib/dashboard.ts`;
-  live mode proxies `/api` to :8000 (see `vite.config.ts`).
-- `docs/` — challenge brief, ARCHITECTURE.md, NASA_PSI_REFERENCES.md,
-  data-schema.md
-- `assets/` — media sources (tilesets, crew sprites, audio); empty
+  the same fitted model via `src/lib/risk.ts` + `src/lib/dashboard.ts`
+  + baked `src/data/psi_snapshot.json`;
+  live mode proxies `/api` to :8000 (see `vite.config.ts`),
+  `VITE_API_URL` for split deploys.
+- `game-visual/` — standalone vanilla HTML/CSS/JS shipyard visual
+  prototype (hub + hangar scenes); separate review gate — see
+  `game-visual/STARTUP.md` + `AGENTS.md`/`REVIEW.md` in that dir.
+- `scripts/` — `si_up.sh` (local SI sidecar bring-up),
+  `start_prod.sh` (container entrypoint), `route_test.mjs` (CDP smoke
+  test for the sim-console routes).
+- `docs/` — challenge brief, ARCHITECTURE.md, DATA_PIPELINE.md,
+  DEPLOY.md, SI_SETUP.md, NASA_PSI_REFERENCES.md, data-schema.md,
+  `superpowers/` plans+specs.
+- `assets/` — readme artwork (`readme/`); game media sources pending.
+- `frontend/`, `src/` — untracked leftovers from an earlier React
+  scaffold (dist/node_modules only, no sources); not part of the build.
 
-## Commands (WSL: `/home/lucas_coimbra/flame-challenge`)
+## Commands (WSL: `/home/gusta/NASA/flame-challenge`)
 
 - `cd core && cmake -S . -B build -DPython3_EXECUTABLE=/usr/bin/python3
   && cmake --build build -j && ./build/test_physics`
@@ -85,7 +107,10 @@ backend only — no client. See `docs/`.
 - `./.venv/bin/uvicorn backend.api.main:app --port 8000`
 - `./.venv/bin/pip install ...` — PEP 668 managed env; always use `.venv`
 - `cd site && npm run build` (tsc + vite) / `npm run dev` / `npx oxlint`
+  / `npm test` (vitest)
 - `./.venv/bin/python -m pytest backend/tests` — API + services tests
+- `./.venv/bin/python -m pytest data/pipelines/test_pipelines.py` — ETL
+  regression suite
 - ETL (in order): `psi_search.py --all` → `psi_files.py --all` →
   `ntrs_search.py --all --fulltext 3` → `normalize_experiments.py` →
   `build_index.py` → `build_dataset.py` → `calibrate_constants.py` →
@@ -102,10 +127,10 @@ backend only — no client. See `docs/`.
   `data/processed/scientific_bounds_report.json` (Cantera T_ad/LOC +
   diluent ordering + SHAP audit — exits non-zero on FAIL)
 - Validate physics changes: `./.venv/bin/python data/pipelines/validate_engine.py`
-  → `data/processed/validation_report.json` (74.1% peak on K/Dext fits; 64.4% on the
-  re-normalized labels — ACME 18.6% → 61% via the fitted coflow
-  criterion: ignition gates + fuel-ramp strain + oxidizer-depletion
-  extinction, fitted per fuel into calibration.json["coflow"])
+  → `data/processed/validation_report.json` (current: 67.3% over 612
+  scored runs — acme 66.4%, flex-2 67.9%; fitted coflow criterion:
+  ignition gates + fuel-ramp strain + oxidizer-depletion extinction,
+  per fuel into calibration.json["coflow"])
 
 ## Conventions
 

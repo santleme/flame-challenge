@@ -34,6 +34,10 @@ cd core && cmake -S . -B build -DPython3_EXECUTABLE=/usr/bin/python3 \
                                                     # engine constants
 .venv/bin/uvicorn backend.api.main:app --port 8000
 # → http://localhost:8000/docs for the interactive API
+
+# IGNIS site (dashboard + sim console)
+cd site && npm install && npm run dev
+# → http://localhost:5173 (proxies /api → :8000)
 ```
 
 ## The loop
@@ -49,21 +53,33 @@ cd core && cmake -S . -B build -DPython3_EXECUTABLE=/usr/bin/python3 \
   Crew flee, engineers extinguish. Casualties cost safety.
 - **Win**: 100% hull completion. **Lose**: safety hits 0% or crew dies.
 
+> Playable build is still a visual prototype (`game-visual/`). The
+> shipped pieces today: the C++ engine, the PSI ETL, the FastAPI layer
+> and the IGNIS site — dashboard, PSI explorer and the voice-enabled
+> sim console.
+
 ## Repository layout
 
 ```
-core/      C++20 physics: droplet d²-law (FLEX), SAFFIRE spread,
-           ACME material risk + pybind11 (Emscripten-ready)
-data/      NASA PSI/NTRS ETL → experiments.csv, search index, risk model
-           (+ data/bundle/: merged dataset & generated JSON artifacts)
-backend/   FastAPI bridge: /api/chamber/preview, WS /ws/chamber,
-           /api/search, /api/ask, /api/risk(+curve/materials/rank),
-           /api/investigations, /api/runs, /api/diff, /api/diffs,
-           /api/decision-cards, /api/neighbors
-site/      IGNIS dashboard (Vite/React): summarize·rank·interpret over
-           the PSI corpus + investigation diff cards
-docs/      ARCHITECTURE.md, DATA_PIPELINE.md,
-           NASA_PSI_REFERENCES.md, challenge brief
+core/        C++20 physics: droplet d²-law (FLEX), SAFFIRE spread,
+             ACME material risk + pybind11 (Emscripten-ready)
+data/        NASA PSI/NTRS ETL → experiments.csv, search index, risk model
+             (+ data/bundle/: merged dataset & generated JSON artifacts,
+             + data/psi/: committed pre-normalized PSI corpus)
+backend/     FastAPI bridge: /api/chamber/preview, WS /ws/chamber,
+             /api/search, /api/ask, /api/risk(+curve/materials/rank),
+             /api/investigations(+/{id},/matrix), /api/insights,
+             /api/runs, /api/diff, /api/diffs, /api/decision-cards,
+             /api/neighbors, /api/materials, /api/rag/stats,
+             /api/mission-reports/templates,
+             /api/si/chat, /api/si/voice, /api/si/voice-command
+site/        IGNIS front end (Vite/React): editorial landing +
+             PsiDataset explorer + SimDeck/SimConsole (agent console,
+             chat + voice) + summarize·rank·interpret dashboard
+game-visual/ standalone vanilla-JS shipyard visual prototype
+scripts/     si_up.sh (local SI sidecars), start_prod.sh (container CMD)
+docs/        ARCHITECTURE.md, DATA_PIPELINE.md, DEPLOY.md, SI_SETUP.md,
+             NASA_PSI_REFERENCES.md, challenge brief, data-schema.md
 ```
 
 Scope: cabin, habitat and crewed-vehicle fire safety only — rocket-motor
@@ -71,10 +87,12 @@ and propellant combustion is out of scope per the challenge brief.
 
 ## Data layer — real NASA records
 
-The ETL in `data/pipelines/` pulls **4,600+ public files across 17 PSI
-studies** (FLEX/CFI, ACME, BASS, Saffire, SAME…) plus 120 NTRS citations,
-normalizes **800+ real test runs** into `data/processed/experiments.csv`,
-and builds a deterministic retrieval corpus — no external ML service.
+The ETL in `data/pipelines/` pulls public PSI files for **13 accessions
+(20,000+ cataloged in `data/psi/catalog/files_manifest.csv`)** —
+FLEX/CFI, ACME, BASS, Saffire, SAME… — plus 120 NTRS citations,
+normalizes **1,150+ real test runs** into
+`data/processed/experiments.csv`, and builds a deterministic
+29k-document retrieval corpus — no external ML service.
 
 ```bash
 ./.venv/bin/python data/pipelines/psi_search.py --all
@@ -100,6 +118,8 @@ O₂ × ventilation × material × gravity). Recipe: `docs/DATA_PIPELINE.md`.
 | [`docs/NASA_PSI_REFERENCES.md`](docs/NASA_PSI_REFERENCES.md) | Mechanic → dataset mapping (FLEX, ACME, SAFFIRE…) |
 | [`docs/challenge-brief.md`](docs/challenge-brief.md) | NASA Space Apps 2026 challenge brief |
 | [`docs/data-schema.md`](docs/data-schema.md) | Shared JSON schemas & calibrated data contracts |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Free-tier deploy — Vercel frontend + Render/Koyeb backend |
+| [`docs/SI_SETUP.md`](docs/SI_SETUP.md) | Local, zero-cost SI stack — whisper.cpp STT + Ollama/9Router LLM |
 
 ---
 

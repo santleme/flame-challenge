@@ -41,22 +41,29 @@ but search metadata + file trees + per-file downloads are public.
 | `psi_search.py --all` | PSI investigation catalog → `raw/psi_investigations.json` |
 | `psi_files.py --all` | file trees + selective small-file download → `raw/files/<ACC>/` + `_manifest.json` |
 | `ntrs_search.py --all --fulltext N` | NTRS citations + fulltext dumps → `raw/ntrs_citations.json`, `raw/ntrs_txt/` |
-| `normalize_experiments.py` | parse test sheets/CSVs → `processed/experiments.csv|json` |
+| `normalize_experiments.py` | parse test sheets/CSVs → `processed/experiments.csv|json`; also folds the committed `data/psi/processed/` legacy corpus in via `parse_legacy_runs`/`parse_legacy_flex` for accessions the raw parsers never reached (BASS, SAFFIRE I–III, FLEX test points, extra ACME) |
 | `build_index.py` | merge all corpora → `processed/search_index.json`, `citations.json` |
 | `fit_risk_model.py` | empirical LOC + risk surface + engine constants (K(o2) fits, extinction diameters) → `shared/calibrated-data/risk_model.json`, patches `calibration.json` |
+| `fit_uncertainty.py` *(optional)* | MAPIE split-conformal → `risk_model.json["uncertainty"]` (needs `requirements-sci.txt`) |
+| `validate_scientific_bounds.py` *(optional)* | Cantera GRI-Mech T_ad/LOC + diluent ordering + SHAP audit → `processed/scientific_bounds_report.json` |
 | `build_dataset.py` | merge curated/structured records → `data/bundle/investigations.json` |
 | `calibrate_constants.py` | dataset → `shared/calibrated-data/calibration.json` + `risk_profiles.json` |
 | `validate_engine.py` | replays scored runs through the engine → `processed/validation_report.json` (confusion matrix + burn-rate error; the gate for physics changes) |
+| `build_master_sheet.py` | auditable per-run master sheet → `processed/nasa_combustion_master.csv` + `bundle/master_sheet.json` |
+| `build_investigation_diffs.py` | curated run-pair diff cards → `bundle/investigation_diffs.json` |
 | `build_site_snapshot.py` | bakes `/api/investigations` + `/api/insights` output → `site/src/data/psi_snapshot.json` (offline fallback for the dashboard section) |
+| `test_pipelines.py` | pytest regression suite — outcome classification, cool-flame negation, NTRS extraction, catalog merges, starter restore (`pytest data/pipelines/test_pipelines.py`) |
 
 ## Normalized experiment schema (`experiments.csv`)
 
 One row per PSI test run. Key columns: `run_id`, `accession`,
-`investigation_id`, `fuel`, `material_id`, `o2_pct`, `n2_pct`, `co2_pct`,
-`he_pct`, `pressure_kpa`, `temp_k`, `flow_cms`, `droplet_d0_mm`,
-`burn_rate_mm2_s`, `extinction_d_mm`, `outcome`
+`investigation_id`, `fuel`, `material_id`, `o2_pct`, `o2_end_pct`,
+`n2_pct`, `co2_pct`, `he_pct`, `pressure_kpa`, `temp_k`, `flow_cms`,
+`mass_flow_lo_mgs`, `mass_flow_hi_mgs`, `zst`, `droplet_d0_mm`,
+`burn_rate_mm2_s`, `burn_time_s`, `extinction_d_mm`, `outcome`
 (burnout|extinction|no-ignition|disruption|unknown), `extinction_type`,
-`cool_flame`, `fiber_support`, `source_file`, `verified`.
+`cool_flame`, `fiber_support`, `comments`, `source_file`, `source_url`,
+`verified`.
 
 Rows parsed from real PSI files carry `verified=true` and keep their
 `source_file` for citation-level provenance.
@@ -86,21 +93,55 @@ sparse members). Unfitted materials keep the hand-set curve.
 `locSource = psi-data` means the LOC was re-estimated from parsed test
 sheets; `calibration` means literature-seeded.
 
-## SI/RAG endpoints (`backend/api/main.py`)
+## API endpoints (`backend/api/main.py`)
+
+SI/RAG + risk:
 
 - `GET /api/search?q=&k=` — BM25-lite over all documents
 - `POST /api/ask {q,k}` — answer + citations; aggregating questions route
   to DuckDB SQL over `experiments.csv` (`mode: sql-rag`), others to
   retrieval (`mode: retrieval`)
 - `GET /api/risk?materialId=&o2Pct=&flowCms=&gravity=` — risk index + breakdown
+- `POST /api/risk` — same, JSON body
 - `GET /api/risk/curve?materialId=&flowCms=` — O₂ sweep for charts
 - `GET /api/risk/materials` — material table (LOC, hidden factors, provenance)
+- `GET /api/risk/rank?o2Pct=&flowCms=&gravity=&top=` — every calibrated
+  material sorted by risk index at the operating point, worst first
 - `GET /api/rag/stats` — corpus statistics
+
+Corpus → insight:
+
 - `GET /api/investigations` — ranked investigation cards: composite score
   (0.35·flammability + 0.25·hiddenHazard + 0.25·explorationRelevance +
   0.15·dataRichness) with per-component breakdown, run stats and
   per-investigation engine-replay fidelity — `services/investigations.py`
 - `GET /api/investigations/{id}` — detail card: summary, material fit
   provenance, sample real runs
+- `GET /api/investigations/matrix` — dashboard attribute feed (objectives,
+  fuels, conditions, variation, sensors)
 - `GET /api/insights` — interpreted corpus findings, each citing its run
   counts and source investigations
+- `GET /api/runs?investigation=&accession=&limit=` — normalized PSI runs
+  for diff/neighbor pickers
+- `GET /api/diff?a=&b=` — arbitrary run-pair diff
+- `GET /api/diffs` — curated diff cards (`bundle/investigation_diffs.json`)
+- `GET /api/neighbors?materialId=&o2Pct=&flowCms=&k=` — k nearest real PSI
+  test runs to the requested operating point
+- `GET /api/decision-cards?materialId=&o2Pct=&flowCms=&gravity=` — live
+  countermeasure scores (fitted risk + KNN evidence + engine ignition
+  pressure for provenance)
+- `GET /api/mission-reports/templates` — canonical mission reports for the
+  Golden Path demo (Artemis airlock, FLEX-2 cool flame, SAFFIRE-IV burn)
+
+Engine surface:
+
+- `GET /api/materials` + `POST /api/chamber/preview` — material table +
+  chamber ignition preview through the C++ core
+- `WS /ws/chamber` — 30 Hz live chamber telemetry
+
+SI copilot:
+
+- `POST /api/si/chat {message, current_chamber_state}` — text turn
+- `POST /api/si/voice` — multipart `audio` + `state`; STT → same pipeline
+- `POST /api/si/voice-command` — flat voice-first envelope (`transcript`,
+  `briefing`, `navigation`, `simulation_commands`)
