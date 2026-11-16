@@ -127,13 +127,22 @@ describe('mergeChamberState', () => {
   })
 })
 
-describe('protocolToCommands', () => {
-  it('preserves recommended numeric oxygen setpoint for REDUCE_O2', () => {
-    const cmd = protocolToCommands('REDUCE_O2', { set_o2_percent: 16 })
-    expect(cmd).toEqual({ set_o2_percent: 16 })
+describe('protocolToCommands and execution integration', () => {
+  it('keeps SUPPRESS_LOCAL recommendation-only (null commands) to avoid false execution confirmation', () => {
+    const cmd = protocolToCommands('SUPPRESS_LOCAL')
+    expect(cmd).toBeNull()
   })
 
-  it('calculates material-aware target from chamber when commands has no O2 setpoint', () => {
+  it('executes CUT_VENTILATION by transitioning airflow to 0', () => {
+    const activeChamber: SiChamberState = { ...base, flowCms: 12.0 }
+    const cmd = protocolToCommands('CUT_VENTILATION')
+    expect(cmd).toEqual({ set_airflow_cm_s: 0 })
+    const applied = mergeChamberState(activeChamber, cmd!)
+    expect(applied.flowCms).toBe(0)
+    expect(applied.sealed).toBeUndefined()
+  })
+
+  it('executes REDUCE_O2 by adjusting chamber to material-specific setpoint', () => {
     const pmmaChamber: SiChamberState = {
       investigationId: 'sofie-gel',
       materialId: 'pmma',
@@ -141,21 +150,25 @@ describe('protocolToCommands', () => {
       flowCms: 2.0,
       gravity: 'microgravity',
     }
-    // PMMA LOC is 15%, target = LOC + 1 = 16%
-    const cmd = protocolToCommands('REDUCE_O2', null, pmmaChamber)
-    expect(cmd?.set_o2_percent).toBe(16)
+    // With explicit copilot setpoint (e.g. 16%):
+    const cmdWithSetpoint = protocolToCommands('REDUCE_O2', { set_o2_percent: 16 }, pmmaChamber)
+    expect(cmdWithSetpoint).toEqual({ set_o2_percent: 16 })
+    const applied1 = mergeChamberState(pmmaChamber, cmdWithSetpoint!)
+    expect(applied1.o2Pct).toBe(16)
+
+    // Without explicit setpoint, computes LOC + 1 (15 + 1 = 16%):
+    const cmdFromLoc = protocolToCommands('REDUCE_O2', null, pmmaChamber)
+    expect(cmdFromLoc?.set_o2_percent).toBe(16)
+    const applied2 = mergeChamberState(pmmaChamber, cmdFromLoc!)
+    expect(applied2.o2Pct).toBe(16)
   })
 
-  it('enables applying local suppression without sealing chamber', () => {
-    const cmd = protocolToCommands('SUPPRESS_LOCAL')
-    expect(cmd).toEqual({ trigger_containment: 'SUPPRESS_LOCAL' })
-    const applied = mergeChamberState(base, cmd!)
-    expect(applied.sealed).toBeUndefined()
-  })
-
-  it('maps CUT_VENTILATION and COOL_AND_ISOLATE', () => {
-    expect(protocolToCommands('CUT_VENTILATION')).toEqual({ set_airflow_cm_s: 0 })
-    expect(protocolToCommands('COOL_AND_ISOLATE')).toEqual({ trigger_containment: 'sealed' })
+  it('executes COOL_AND_ISOLATE by sealing the chamber', () => {
+    const unsealed: SiChamberState = { ...base, sealed: false }
+    const cmd = protocolToCommands('COOL_AND_ISOLATE')
+    expect(cmd).toEqual({ trigger_containment: 'sealed' })
+    const applied = mergeChamberState(unsealed, cmd!)
+    expect(applied.sealed).toBe(true)
   })
 })
 

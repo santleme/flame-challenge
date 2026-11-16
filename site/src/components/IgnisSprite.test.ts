@@ -121,4 +121,49 @@ describe('AgentTurn and IgnisSprite integration', () => {
     expect(html).not.toContain('Risk index')
     expect(html).not.toContain('NaN')
   })
+
+  it('renders SUPPRESS_LOCAL as recommendation-only text without an apply button', () => {
+    const suppressTurn: AgentTurnModel = {
+      kind: 'agent',
+      id: 4,
+      pending: false,
+      tools: [],
+      briefing: 'Operating below LOC margin.',
+      action: 'SUPPRESS_LOCAL',
+      run: null,
+      mode: 'llm',
+      model: 'qwen',
+      engine: 'c++',
+      riskIndex: 0.15,
+      evidence: [],
+      ms: 80,
+    }
+
+    const html = renderToString(React.createElement(AgentTurn, { turn: suppressTurn, live: false }))
+    expect(html).toContain('SUPPRESS_LOCAL')
+    expect(html).not.toContain('Apply protocol: SUPPRESS_LOCAL')
+  })
+
+  it('renders executable protocol with an apply button', () => {
+    const cutTurn: AgentTurnModel = {
+      kind: 'agent',
+      id: 5,
+      pending: false,
+      tools: [],
+      briefing: 'High flow spread risk detected.',
+      action: 'CUT_VENTILATION',
+      run: null,
+      mode: 'llm',
+      model: 'qwen',
+      engine: 'c++',
+      riskIndex: 0.65,
+      evidence: [],
+      ms: 80,
+    }
+
+    const html = renderToString(React.createElement(AgentTurn, { turn: cutTurn, live: false }))
+    expect(html).toContain('Apply protocol:')
+    expect(html).toContain('CUT_VENTILATION')
+    expect(html).toContain('<button type="button"')
+  })
 })

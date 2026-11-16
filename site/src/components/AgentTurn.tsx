@@ -72,8 +72,9 @@ export function protocolToCommands(
     }
     case 'COOL_AND_ISOLATE':
       return { trigger_containment: commands?.trigger_containment ?? 'sealed' }
+    // SUPPRESS_LOCAL is crew advisory only (portable extinguisher / localized response);
+    // it has no automated chamber actuator and remains recommendation-only text.
     case 'SUPPRESS_LOCAL':
-      return { trigger_containment: commands?.trigger_containment ?? 'SUPPRESS_LOCAL' }
     default:
       return null
   }
