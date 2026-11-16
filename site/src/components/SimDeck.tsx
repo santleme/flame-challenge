@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { gsap } from '../lib/scroll'
 import { emitUiCommand } from '../lib/simBus'
 import { GRAVITY_G } from '../lib/simConsole'
-import { riskCurveLocal, riskIndexLocal, riskLevel } from '../lib/risk'
 import { attachSmoothScroll } from '../lib/smoothOverlay'
 import KeyedFlame from './KeyedFlame'
 import Footer from './Footer'
@@ -152,35 +151,6 @@ const MISSION_PRESETS: MissionPreset[] = [
     outcomeStatus: 'MISSION ACCOMPLISHED',
   },
 ]
-
-const O2_MIN = 8
-const O2_MAX = 40
-
-/** risk-vs-O₂ sparkline for one preset — the sweep is computed client-side
- *  by the same fitted model the engine uses, so it works fully offline.
- *  The dot marks where this mission actually sits on the curve. */
-function RiskSpark({ preset }: { preset: MissionPreset }) {
-  const { path, cx, cy } = useMemo(() => {
-    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 2)
-    const path = pts
-      .map((p, i) => `${i === 0 ? 'M' : 'L'}${(((p.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100).toFixed(1)},${(34 - p.riskIndex * 30).toFixed(1)}`)
-      .join(' ')
-    const spot = pts.find((pt) => Math.abs(pt.o2Pct - preset.o2Pct) < 1e-9)
-      ?? riskIndexLocal(preset.materialId, preset.o2Pct, preset.flowCms, preset.gravity)
-    const pad = 2.6 + 1.2 / 2 // dot radius + half stroke — keep it inside the box
-    return {
-      path,
-      cx: Math.min(100 - pad, Math.max(pad, ((preset.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100)),
-      cy: Math.min(36 - pad, Math.max(pad, 34 - spot.riskIndex * 30)),
-    }
-  }, [preset])
-  return (
-    <svg viewBox="0 0 100 36" aria-hidden="true" className="mt-4 block h-9 w-full overflow-visible">
-      <path d={path} fill="none" stroke={preset.accent} strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
-      <circle cx={cx} cy={cy} r="2.6" fill={preset.accent} stroke="var(--bg)" strokeWidth="1.2" />
-    </svg>
-  )
-}
 
 /** 'Historical Crisis: Apollo 13' → { kind: 'Historical Crisis', name: 'Apollo 13' } */
 function splitTitle(preset: MissionPreset) {
@@ -553,61 +523,6 @@ export default function SimDeck() {
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* ---- mission risk board — every preset scored by the local
-                engine mirror, macOS-widget minimal: one number per tile ---- */}
-        <section aria-label="Mission risk comparison" className="relative mt-24 sm:mt-32">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <h2 className="font-display text-2xl font-bold sm:text-3xl">
-              Mission risk board
-            </h2>
-            <span className="font-mono text-micro lowercase tracking-eyebrow opacity-50">
-              live engine · tap to simulate
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {[...MISSION_PRESETS]
-              .map((preset) => ({
-                preset,
-                risk: riskIndexLocal(
-                  preset.materialId,
-                  preset.o2Pct,
-                  preset.flowCms,
-                  preset.gravity,
-                ),
-              }))
-              .sort((a, b) => b.risk.riskIndex - a.risk.riskIndex)
-              .map(({ preset, risk: r }) => {
-              const pct = Math.round(r.riskIndex * 100)
-              const isActive = activeMission.id === preset.id
-              return (
-                <button
-                  key={preset.id}
-                  {...pickProps(preset)}
-                  className={`group rounded-card border p-5 text-left shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg sm:p-6 ${
-                    isActive ? 'border-accent/60 bg-accent/5' : 'border-edge panel-85'
-                  }`}
-                >
-                  <div
-                    className="font-display text-5xl font-bold leading-none tracking-tight sm:text-6xl"
-                    style={{ color: preset.accent }}
-                  >
-                    {pct}
-                    <span className="text-2xl font-semibold opacity-60">%</span>
-                  </div>
-                  <div className="mt-3 font-display text-base font-semibold leading-tight sm:text-lg">
-                    {splitTitle(preset).name}
-                  </div>
-                  <div className="mt-1 font-mono text-tiny lowercase tracking-label opacity-60">
-                    {riskLevel(r.riskIndex)}
-                    {isActive ? ' · ●' : ''}
-                  </div>
-                  <RiskSpark preset={preset} />
-                </button>
-              )
-            })}
           </div>
         </section>
 
