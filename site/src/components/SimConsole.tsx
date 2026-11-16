@@ -238,7 +238,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     ms: null,
   })
 
-  const sendTextRef = useRef<((text: string, display?: string, opts?: { suppressNav?: boolean }) => Promise<void>) | null>(null)
+  const sendTextRef = useRef<((text: string, display?: string, opts?: { suppressNav?: boolean; presetCommands?: SiSimulationCommands }) => Promise<void>) | null>(null)
   // sends serialize through this tail: a follow-up fired while a preview
   // still waits on its live answer reads chamberRef only after the live
   // response commits — never the pre-preview state. The composer stays
@@ -259,8 +259,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         set_gravity_g: cmd.set_gravity_g ?? undefined,
         trigger_containment: cmd.trigger_containment ?? undefined,
       }
-      const nextChamber = mergeChamberState(chamberRef.current, sim)
-      commitChamber(nextChamber)
+      // don't commit the preset yet — the send queues behind any reply
+      // still in flight, and that reply's own commands would overwrite
+      // these settings before `sent` is captured. The preset travels with
+      // the prompt and is applied when this mission's turn starts.
       // several missions share an investigationId (apollo 1 & 11 → flare,
       // apollo 13 & 12 → same) — match the deck envelope by its own id
       const preset =
@@ -271,7 +273,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       void sendTextRef.current?.(
         preset?.prompt ?? `Analyze ${cmd.__investigation ?? cmd.load_preset ?? 'this mission'}.`,
         preset ? `Explore mission — ${preset.title}` : undefined,
-        { suppressNav: true },
+        { suppressNav: true, presetCommands: sim },
       )
     }
     window.addEventListener('ignis:ui-command', onDeckCommand)
@@ -279,13 +281,18 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presets])
 
-  const sendText = (text: string, display?: string, opts?: { suppressNav?: boolean }) => {
+  const sendText = (text: string, display?: string, opts?: { suppressNav?: boolean; presetCommands?: SiSimulationCommands }) => {
     const uid = nid()
     const tid = nid()
     stickRef.current = true
     commitMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
     const mine = tailRef.current.then(async () => {
+      // a queued mission applies its envelope here — after the reply in
+      // flight committed, before this request captures its chamber
+      if (opts?.presetCommands) {
+        commitChamber(mergeChamberState(chamberRef.current, opts.presetCommands))
+      }
       const sent = chamberRef.current
       // progressive answer: the deterministic local model is instant and
       // grounded — show it when the copilot is slow (>8 s, e.g. a cold or
