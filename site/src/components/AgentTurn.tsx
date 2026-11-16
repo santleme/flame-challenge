@@ -31,8 +31,21 @@ const sup = (n: number) =>
     .map((d) => SUP_DIGITS[Number(d)])
     .join('')
 
-/** executable protocol vocabulary — mirrors si_copilot.ACTION_CODES */
-const PROTOCOL_RE = /^[A-Z][A-Z0-9_]*$/
+/** converts recognized protocol codes into concrete simulation commands */
+function protocolToCommands(action: string | null | undefined): SiSimulationCommands | null {
+  if (!action) return null
+  const code = action.trim().toUpperCase()
+  switch (code) {
+    case 'CUT_VENTILATION':
+      return { set_airflow_cm_s: 0 }
+    case 'REDUCE_O2':
+      return { set_o2_percent: 14 }
+    case 'COOL_AND_ISOLATE':
+      return { trigger_containment: 'sealed' }
+    default:
+      return null
+  }
+}
 
 /** physical quantities the prose sets in medium ink instead of a chip */
 const PARAM_RE =
@@ -140,12 +153,11 @@ export default function AgentTurn({
     turn.riskIndex != null && !Number.isNaN(turn.riskIndex)
       ? Math.round(turn.riskIndex * 100)
       : null
-  const protocol =
-    turn.action && PROTOCOL_RE.test(turn.action.trim()) ? turn.action.trim() : null
+  const executableCommands = protocolToCommands(turn.action)
 
   const applyProtocol = () => {
-    if (!protocol) return
-    onApply?.({ trigger_containment: protocol })
+    if (!executableCommands) return
+    onApply?.(executableCommands)
     setApplied(true)
   }
 
@@ -210,7 +222,7 @@ export default function AgentTurn({
           </p>
 
           {turn.action && (
-            protocol ? (
+            executableCommands ? (
               <button
                 type="button"
                 onClick={applyProtocol}
@@ -228,7 +240,7 @@ export default function AgentTurn({
                     ↳
                   </span>
                   Apply protocol:{' '}
-                  <span className="font-semibold uppercase tracking-micro">{protocol}</span>
+                  <span className="font-semibold uppercase tracking-micro">{turn.action.trim()}</span>
                   {applied && <span className="text-ink/45"> · applied</span>}
                   <span
                     aria-hidden="true"
@@ -302,20 +314,37 @@ export default function AgentTurn({
       {/* — scientific footnotes: hairline rule + superscript index, no box — */}
       {evidence.length > 0 && (
         <div className="mt-7 border-t border-ink/10 pt-3">
-          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1.5">
+          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
             {evidence.map((item, i) => (
-              <button
-                key={`${item.accession}-${i}`}
-                type="button"
-                onClick={() => loadRun(item)}
-                title="Load this run into the chamber"
-                className="group border-none bg-transparent p-0 text-left font-mono text-[12px] text-ink/55 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <sup className="mr-1.5 text-[10px] text-accent">{sup(i + 1)}</sup>
-                <span className="underline decoration-transparent underline-offset-4 transition-[text-decoration-color] group-hover:decoration-ink/40">
-                  {item.accession} · {item.fuel} ({item.outcome})
-                </span>
-              </button>
+              <span key={`${item.accession}-${i}`} className="inline-flex items-baseline gap-2 font-mono text-[12px]">
+                <sup className="text-[10px] text-accent">{sup(i + 1)}</sup>
+                {item.sourceUrl ? (
+                  <a
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`View ${item.accession} on NASA PSI`}
+                    className="text-ink/65 underline decoration-ink/20 underline-offset-4 transition-colors hover:text-ink hover:decoration-ink focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    {item.accession} · {item.fuel} ({item.outcome})
+                    <span aria-hidden="true" className="ml-1 text-[10px] text-ink/40">↗</span>
+                  </a>
+                ) : (
+                  <span className="text-ink/65">
+                    {item.accession} · {item.fuel} ({item.outcome})
+                  </span>
+                )}
+                {onApply && (
+                  <button
+                    type="button"
+                    onClick={() => loadRun(item)}
+                    title="Load these test conditions into the simulation chamber"
+                    className="border-none bg-transparent p-0 font-mono text-micro tracking-micro text-ink/40 transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    ↳ simulate
+                  </button>
+                )}
+              </span>
             ))}
           </div>
         </div>

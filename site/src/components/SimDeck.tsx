@@ -295,11 +295,13 @@ export default function SimDeck() {
         clearInnerTarget()
       }
     }
+
+    let timer: ReturnType<typeof setTimeout> | undefined
     const pending = peekInnerTarget()
     if (pending) {
-      const timer = setTimeout(() => scrollToInner(pending), 120)
-      return () => clearTimeout(timer)
+      timer = setTimeout(() => scrollToInner(pending), 120)
     }
+
     const onScrollInner = (e: Event) => {
       const detail = (e as CustomEvent<{ id: string }>).detail
       if (detail?.id) {
@@ -307,7 +309,10 @@ export default function SimDeck() {
       }
     }
     window.addEventListener('ignis:scroll-inner', onScrollInner)
-    return () => window.removeEventListener('ignis:scroll-inner', onScrollInner)
+    return () => {
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('ignis:scroll-inner', onScrollInner)
+    }
   }, [])
 
   // selecting an envelope marks it active and announces the pick on the
