@@ -955,6 +955,25 @@ export function compileMissionReportSpec(
   }
 }
 
+/** The operating point a response actually scored. The backend scores
+ *  the chamber state it received and echoes it back in `res.chamber`;
+ *  `simulation_commands` can then retune O₂/flow — so the report's
+ *  analysis must come from res.chamber (or the state sent), never from
+ *  the post-command execution chamber. */
+export function analysisScenarioForResponse(res: SiResponse, sent: SiChamberState): SiChamberState {
+  const c = res.chamber ?? {}
+  const num = (v: unknown) => (typeof v === 'number' && !Number.isNaN(v) ? v : undefined)
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+  return {
+    ...sent,
+    investigationId: str(c.investigationId) ?? sent.investigationId ?? undefined,
+    materialId: str(c.materialId) ?? sent.materialId ?? undefined,
+    o2Pct: num(c.o2Pct) ?? sent.o2Pct,
+    flowCms: num(c.flowCms) ?? sent.flowCms,
+    gravity: str(c.gravity) ?? sent.gravity,
+  }
+}
+
 export function generateDashboard(
   prompt: string,
   response: SiResponse,
