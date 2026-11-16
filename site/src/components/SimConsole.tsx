@@ -424,7 +424,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
             m.kind === 'user' ? (
               <div
                 key={m.id}
-                className="ml-auto max-w-[85%] rounded-2xl rounded-br-md border border-sky-200/70 bg-sky-100/75 px-4 py-3 text-base leading-relaxed text-slate-800 dark:border-sky-300/15 dark:bg-sky-400/10 dark:text-ink sm:max-w-[75%]"
+                className="ml-auto max-w-[85%] rounded-3xl rounded-br-lg border border-accent/35 bg-accent/15 px-4 py-2.5 font-chat-sans text-[15px] leading-relaxed tracking-[-0.01em] text-ink shadow-[0_1px_2px_rgba(73,184,214,0.10)] dark:border-accent/25 dark:bg-accent/10 sm:max-w-[75%]"
               >
                 {m.text}
               </div>

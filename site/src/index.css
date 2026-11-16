@@ -26,6 +26,10 @@
   --font-sans: 'IBM Plex Mono', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-display: 'Space Mono', 'Courier Prime', monospace;
+  /* chat reading face — Inter is loaded in index.html; prose reads in a
+     real sans while data (tool names, values) stays mono */
+  --font-chat-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-jetbrains: 'JetBrains Mono', ui-monospace, monospace;
 
   /* editorial mono type scale — replaces ad-hoc 9–13px literals */
   --text-micro: 10px;
