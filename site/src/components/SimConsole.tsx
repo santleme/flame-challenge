@@ -75,11 +75,27 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     cachedChamber = chamber
   }, [chamber])
 
+  // write-through: publish state to the session cache BEFORE React commits.
+  // A reply that itself navigates to the dashboard unmounts this console in
+  // the same batch — effect-based caching would lose the completed turn.
+  const msgsRef = useRef<ChatMsg[]>(msgs)
+  const commitMsgs = (updater: (ms: ChatMsg[]) => ChatMsg[]) => {
+    const next = updater(msgsRef.current)
+    msgsRef.current = next
+    cachedMsgs = next
+    setMsgs(next)
+  }
+  const commitChamber = (next: SiChamberState) => {
+    chamberRef.current = next
+    cachedChamber = next
+    setChamber(next)
+  }
+
   // the newest run-bearing turn owns the live chamber — flip its
   // chamber.run tool row to done when the stream completes or engine goes offline
   useEffect(() => {
     const onDone = () =>
-      setMsgs((ms) => {
+      commitMsgs((ms) => {
         for (let i = ms.length - 1; i >= 0; i--) {
           const m = ms[i]
           if (m.kind === 'agent' && m.run) {
@@ -154,7 +170,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           analysisScenarioForResponse(res, sent ?? nextChamber),
         )
       }
-      setChamber(nextChamber)
+      commitChamber(nextChamber)
     }
     // when the copilot points somewhere (generated dashboards, a section),
     // follow it — this is how answers surface the dashboards they produced
@@ -175,7 +191,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     // are exclusive views, so leaving the deck would unmount the console
     // and discard chat, chamber state and the running experiment. The
     // turn's "view dashboards" link is the deliberate way over.
-    setMsgs((ms2) =>
+    commitMsgs((ms2) =>
       ms2.map((m) =>
         m.id === turnId
           ? {
@@ -231,7 +247,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         trigger_containment: cmd.trigger_containment ?? undefined,
       }
       const nextChamber = mergeChamberState(chamberRef.current, sim)
-      setChamber(nextChamber)
+      commitChamber(nextChamber)
       // several missions share an investigationId (apollo 1 & 11 → flare,
       // apollo 13 & 12 → same) — match the deck envelope by its own id
       const preset =
@@ -254,7 +270,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const uid = nid()
     const tid = nid()
     stickRef.current = true
-    setMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
+    commitMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
     const sent = chamberRef.current
     const res =
@@ -269,13 +285,13 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const tid = nid()
     stickRef.current = true
     // the pending turn doubles as the "listening / thinking" indicator
-    setMsgs((ms) => [...ms, pendingTurn(tid)])
+    commitMsgs((ms) => [...ms, pendingTurn(tid)])
     const t0 = performance.now()
     const sent = chamberRef.current
     const res = await siVoice(blob, sent)
     const transcript = res?.transcript?.trim() || 'voice command'
     // insert the transcribed user bubble right before the pending turn
-    setMsgs((ms) => {
+    commitMsgs((ms) => {
       const out: ChatMsg[] = []
       for (const m of ms) {
         if (m.id === tid) out.push({ kind: 'user', id: uid, text: `◉ ${transcript}` })
@@ -286,7 +302,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     if (res) {
       applyResponse(res, tid, performance.now() - t0, false, transcript, sent)
     } else {
-      setMsgs((ms) =>
+      commitMsgs((ms) =>
         ms.map((m) =>
           m.id === tid
             ? {
