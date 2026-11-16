@@ -93,8 +93,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const sim = res.simulation_commands ?? null
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
-    // ui command (2.5 s window) — ordering matters, React batches the rest
-    if (sim && Object.values(sim).some((v) => v != null)) {
+    // ui command (2.5 s window) — ordering matters, React batches the rest.
+    // A provisional preview is display-only: its locally-guessed commands
+    // never touch the chamber, or partial live commands would merge onto
+    // a contaminated state. The final response commits its commands once.
+    if (!provisional && sim && Object.values(sim).some((v) => v != null)) {
       const nextChamber = mergeChamberState(chamberRef.current, sim)
       // Materialize full chamber configuration so replacement LiveChamber instances
       // in follow-up runs retain accumulated O2, airflow, and investigation settings.
@@ -136,7 +139,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const section = res.navigation?.scroll_to_section
     // preset-driven turns must never leave the deck — the operator just
     // asked to simulate here, so a stray 'psi-dataset' hop is a bug
-    if (section && !suppressNav) {
+    if (section && !suppressNav && !provisional) {
       // 'chamber' is the copilot's name for this console — the live-chamber
       // video section no longer exists
       const target = section === 'chamber' ? '#ignis-console' : section.startsWith('#') ? section : `#${section}`
@@ -251,7 +254,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
     if (winner.provisional) {
       const later = await live
-      if (later) applyResponse(later, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
+      // the final answer commits its commands once, merging onto the
+      // original sent state (the preview never touched the chamber).
+      // If the uplink failed outright, the preview becomes the answer
+      // and its commands run like a normal offline turn.
+      applyResponse(later ?? res, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
     }
   }
   sendTextRef.current = sendText
