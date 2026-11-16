@@ -89,7 +89,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160
   }
 
-  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '', sent?: SiChamberState) => {
+  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '', sent?: SiChamberState, provisional = false) => {
     const sim = res.simulation_commands ?? null
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
@@ -120,8 +120,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       // panel listens on 'ignis:dashboard-generated' and shows it as '· live'.
       // scenario = post-command execution chamber; analysisScenario = the
       // operating point res.chamber was actually scored at (commands may
-      // have retuned O₂/flow after scoring)
-      if (hasRunCondition) {
+      // have retuned O₂/flow after scoring). A provisional local answer
+      // skips this — the live response that upgrades it owns the report,
+      // so one run never yields two briefs
+      if (hasRunCondition && !provisional) {
         generateDashboard(
           prompt, res, undefined, nextChamber,
           analysisScenarioForResponse(res, sent ?? nextChamber),
@@ -230,10 +232,27 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     setMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
     const sent = chamberRef.current
-    const res =
-      (await siChat(text, sent)) ??
-      synthesizeLocalSiResponse(text, sent)
-    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent)
+    // progressive answer: the deterministic local model is instant and
+    // grounded — show it when the copilot is slow (>8 s, e.g. a cold or
+    // busy gateway), then upgrade the same turn when the live answer
+    // lands. siChat itself resolves locally at its own timeout, so the
+    // turn always ends complete.
+    const live = siChat(text, sent)
+    const winner = await Promise.race([
+      live.then((r) => ({ r, provisional: false })),
+      new Promise<{ r: SiResponse; provisional: boolean }>((resolve) =>
+        window.setTimeout(
+          () => resolve({ r: synthesizeLocalSiResponse(text, sent), provisional: true }),
+          8000,
+        ),
+      ),
+    ])
+    const res = winner.r ?? synthesizeLocalSiResponse(text, sent)
+    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
+    if (winner.provisional) {
+      const later = await live
+      if (later) applyResponse(later, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
+    }
   }
   sendTextRef.current = sendText
 

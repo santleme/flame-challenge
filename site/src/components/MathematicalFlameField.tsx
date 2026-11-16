@@ -76,7 +76,10 @@ interface MathematicalFlameFieldProps {
   glowRef: React.RefObject<HTMLElement | null>
 }
 
-const CELL = 4 // CSS px per simulation cell
+// CELL trades sim resolution for frame cost — the render canvas is
+// upscaled under a 3px CSS blur anyway, so a coarser grid is invisible
+// while cutting ~55% of the per-frame cell work
+const CELL = 6 // CSS px per simulation cell
 const MAX_W = 260
 const MAX_H = 140
 const MAX_COUNT = MAX_W * MAX_H
@@ -376,7 +379,9 @@ export default function MathematicalFlameField({
 
     const draw = (now: number) => {
       if (!visible || !image || !imageData) return
-      if (now - last < 30 && !reducedMotion.matches) {
+      // ~25fps — flame flicker reads identically at 40ms, saves a quarter
+      // of the per-second CPU vs the old 30ms cadence
+      if (now - last < 40 && !reducedMotion.matches) {
         raf = requestAnimationFrame(draw)
         return
       }

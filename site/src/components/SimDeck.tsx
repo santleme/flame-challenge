@@ -254,7 +254,10 @@ export function HoverVideo({ src, poster, label, className }: { src: string; pos
       host.removeEventListener('focusout', stop)
     }
   }, [])
-  return <video ref={ref} className={className} src={src} poster={poster} aria-label={label} muted loop playsInline preload="auto" />
+  // preload="metadata", not "auto" — posters paint instantly and the clip
+  // only buffers when it actually plays (hover/visible), instead of every
+  // deck + report video streaming on mount
+  return <video ref={ref} className={className} src={src} poster={poster} aria-label={label} muted loop playsInline preload="metadata" />
 }
 
 export default function SimDeck() {
