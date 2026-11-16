@@ -58,6 +58,8 @@ export interface AgentTurnModel {
   model: string | null
   engine: string | null
   riskIndex: number | null
+  /** conformal band around riskIndex — res.chamber.uncertainty {lower, upper} */
+  riskBand?: { lower: number; upper: number } | null
   evidence: SiEvidence[]
   ms: number | null
 }

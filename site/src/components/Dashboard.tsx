@@ -70,6 +70,24 @@ export default function Dashboard() {
     return root ? attachSmoothScroll(root) : undefined
   }, [])
 
+  useEffect(() => {
+    const handleScroll = () => {
+      const hash = location.hash.slice(1)
+      if (hash === 'dashboard-reports' || hash === 'mission-reports') {
+        const el = document.getElementById('dashboard-reports') || document.getElementById('mission-reports')
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    const timer = setTimeout(handleScroll, 120)
+    window.addEventListener('hashchange', handleScroll)
+    window.addEventListener('ignis:route', handleScroll)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('hashchange', handleScroll)
+      window.removeEventListener('ignis:route', handleScroll)
+    }
+  }, [])
+
   const f = HEADLINE_EXPLORATION_FINDINGS[finding]
   const stats = useMemo(
     () => [
@@ -242,7 +260,7 @@ export default function Dashboard() {
         </section>
 
         {/* ---- 02 generated mission reports ---- */}
-        <section className="relative mt-16 sm:mt-20" aria-label="Generated mission reports">
+        <section id="dashboard-reports" className="relative mt-16 sm:mt-20 scroll-mt-16" aria-label="Generated mission reports">
           <MissionReportsPanel />
         </section>
       </div>

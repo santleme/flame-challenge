@@ -13,12 +13,12 @@ interface Props {
 }
 
 const LEFT = [
-  { label: 'simulations', href: '#simulations', className: 'max-[520px]:hidden' },
-  { label: 'dashboard', href: '#dashboard', className: 'max-[700px]:hidden' },
+  { label: 'simulations', href: '#simulations', className: 'max-[420px]:hidden' },
+  { label: 'dashboard', href: '#dashboard', className: 'max-[620px]:hidden' },
 ]
 const RIGHT = [
   { label: 'vision', href: '#vision', className: 'max-lg:hidden' },
-  { label: 'psi-dataset', href: '#psi-dataset', className: 'max-[640px]:hidden' },
+  { label: 'psi-dataset', href: '#psi-dataset', className: 'max-[720px]:hidden' },
 ]
 
 
@@ -184,7 +184,7 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
           </a>
           <span
             role="tooltip"
-            className="pointer-events-none absolute left-1/2 top-full z-10 mt-4 w-56 -translate-x-1/2 -translate-y-1 rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-left opacity-0 shadow-[0_10px_24px_-8px_rgba(23,33,43,0.28)] backdrop-blur-xl transition-[opacity,transform] duration-300 group-hover/brand:translate-y-0 group-hover/brand:opacity-100 dark:border-white/15 dark:bg-[#0e1116f2] dark:shadow-[0_10px_24px_-8px_rgba(255,255,255,0.16)]"
+            className="pointer-events-none absolute left-1/2 top-full z-10 mt-4 w-56 -translate-x-1/2 -translate-y-1 rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-left text-ink opacity-0 shadow-[0_10px_24px_-8px_rgba(23,33,43,0.28)] backdrop-blur-xl transition-[opacity,transform] duration-300 group-hover/brand:translate-y-0 group-hover/brand:opacity-100 dark:border-white/15 dark:bg-[#0e1116f2] dark:shadow-[0_10px_24px_-8px_rgba(255,255,255,0.16)]"
           >
             <span className="block font-display text-base font-bold leading-none text-ink">ignis</span>
             <span className="mt-1.5 block font-mono text-[10px] uppercase tracking-label text-ink opacity-50">noun · latin · product</span>
@@ -233,16 +233,16 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
             aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
             variant="glass"
             size="sm"
-            className="header-theme-toggle lowercase"
+            className="header-theme-toggle lowercase gap-1.5"
           >
             {dark ? <IconMoon size={16} /> : <IconSun size={16} />}
-            {dark ? 'dark' : 'light'}
+            <span className="hidden sm:inline">{dark ? 'dark' : 'light'}</span>
           </Button>
           <Button
             asChild
             variant="glass"
             size="sm"
-            className="lowercase"
+            className="lowercase gap-1.5"
           >
             <a
               href="https://github.com/santleme/flame-challenge"
@@ -251,7 +251,7 @@ export default function Header({ dark, onToggleTheme, brandVisible = false }: Pr
               aria-label="IGNIS source on GitHub"
             >
               <IconGithub size={16} />
-              github
+              <span className="hidden sm:inline">github</span>
             </a>
           </Button>
         </div>

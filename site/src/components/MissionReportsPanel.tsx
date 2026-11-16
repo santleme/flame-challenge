@@ -301,6 +301,9 @@ function EnvelopeTab({ report }: { report: GeneratedDashboard }) {
 
 function Avatar({ name, src }: { name: string; src?: string }) {
   const [broken, setBroken] = useState(false)
+  useEffect(() => {
+    setBroken(false)
+  }, [src])
   return (
     <span className="av">
       {name
@@ -464,15 +467,21 @@ export default function MissionReportsPanel() {
   // routes to the dashboard view — scroll the panel into view on mount
   // so the operator lands on the brief, not the page top
   useEffect(() => {
-    if (location.hash !== '#dashboard-reports') return
-    const t = setTimeout(
-      () =>
-        document
-          .getElementById('mission-reports')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      60,
-    )
-    return () => clearTimeout(t)
+    const scrollToBrief = () => {
+      const hash = location.hash.slice(1)
+      if (hash === 'dashboard-reports' || hash === 'mission-reports') {
+        const el = document.getElementById('mission-reports') || document.getElementById('dashboard-reports')
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    const t = setTimeout(scrollToBrief, 60)
+    window.addEventListener('hashchange', scrollToBrief)
+    window.addEventListener('ignis:route', scrollToBrief)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('hashchange', scrollToBrief)
+      window.removeEventListener('ignis:route', scrollToBrief)
+    }
   }, [])
 
   const filtered = useMemo(() => reports.filter((r) => matchesRegime(r, regime)), [reports, regime])

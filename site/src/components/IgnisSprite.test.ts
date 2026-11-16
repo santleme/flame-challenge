@@ -87,10 +87,13 @@ describe('AgentTurn and IgnisSprite integration', () => {
     }
 
     const html = renderToString(React.createElement(AgentTurn, { turn: completedTurn, live: false }))
+    // param highlighting splits the briefing into spans — assert on the
+    // visible text, not the tag-interleaved markup
+    const text = html.replace(/<[^>]+>/g, '')
     expect(html).toContain('Ignis')
     expect(html).toContain('Connected')
-    expect(html).toContain('Ignition confirmed under 21% O2.')
-    expect(html).toContain('Check quench distance')
+    expect(text).toContain('Ignition confirmed under 21% O2.')
+    expect(text).toContain('Check quench distance')
     expect(html).toContain('42')
     expect(html).toContain('set_o2_percent')
     expect(html).toContain('PSI-TEST-1')

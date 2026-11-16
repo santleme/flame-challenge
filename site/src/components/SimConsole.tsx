@@ -15,6 +15,7 @@ import {
   GRAVITY_G,
   mergeChamberState,
   toolCallsFromCommands,
+  type AgentTurnModel,
   type ChatMsg,
   type PresetCommandSource,
 } from '../lib/simConsole'
@@ -214,6 +215,12 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               model: res.model,
               engine: res.engine ?? null,
               riskIndex: typeof res.chamber?.riskIndex === 'number' && !Number.isNaN(res.chamber.riskIndex) ? res.chamber.riskIndex : null,
+              riskBand: (() => {
+                const u = res.chamber?.uncertainty as { lower?: unknown; upper?: unknown } | undefined
+                return typeof u?.lower === 'number' && typeof u?.upper === 'number'
+                  ? { lower: u.lower, upper: u.upper }
+                  : null
+              })(),
               evidence: res.evidence ?? [],
               ms,
             }
@@ -380,6 +387,29 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     if (m.kind === 'agent' && m.run) liveTurnId = m.id
   }
 
+  // protocol + evidence actions dispatch straight onto the chamber bus —
+  // the turn stays the operator's log of what was asked and applied
+  const applyCommands = (sim: SiSimulationCommands) => {
+    const next = mergeChamberState(chamberRef.current, sim)
+    emitSimulationCommands(sim, 'sim-console', next.investigationId ?? null)
+    commitChamber(next)
+  }
+
+  // pair each query with its answer: the stream reads as a mission log —
+  // numbered operator entries, each followed by Ignis's analysis
+  const groups: { key: string; user: ChatMsg | null; agents: AgentTurnModel[]; n: number }[] = []
+  let queryCount = 0
+  for (const m of msgs) {
+    if (m.kind === 'user') {
+      queryCount++
+      groups.push({ key: `u${m.id}`, user: m, agents: [], n: queryCount })
+    } else {
+      const tail = groups[groups.length - 1]
+      if (tail && tail.user) tail.agents.push(m)
+      else groups.push({ key: `a${m.id}`, user: null, agents: [m], n: 0 })
+    }
+  }
+
   return (
     <section aria-label="Ignis conversation" className="flex min-h-0 flex-1 flex-col font-chat-sans">
       <div
@@ -401,7 +431,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               <p className="mb-0 mt-3 max-w-xl font-chat-sans text-base font-normal leading-7 text-ink/75 sm:text-lg">
                 Ask Ignis about an experiment or describe what you want to test.
               </p>
-              <div className="mt-6 flex max-w-xl flex-wrap items-center justify-center gap-2">
+              <div className="mt-8 flex max-w-xl flex-wrap items-baseline justify-center gap-x-8 gap-y-2">
                 {[
                   'Run a SAFFIRE burn',
                   'Is methanol safe at 24% O₂?',
@@ -411,27 +441,40 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
                     key={s}
                     type="button"
                     onClick={() => sendText(s)}
-                    className="rounded-full border border-edge/70 bg-ink/[0.035] px-4 py-2 font-mono text-sm text-ink/80 transition-colors duration-200 hover:border-accent/60 hover:bg-accent/10 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent dark:bg-white/[0.05]"
+                    className="group border-none bg-transparent p-0 font-mono text-[13px] text-ink/60 transition-colors duration-200 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   >
-                    {s}
+                    <span aria-hidden="true" className="mr-2 inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
+                    <span className="underline decoration-ink/20 underline-offset-4 transition-colors group-hover:decoration-ink/60">{s}</span>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {msgs.map((m) =>
-            m.kind === 'user' ? (
-              <div
-                key={m.id}
-                className="ml-auto max-w-[85%] rounded-3xl rounded-br-lg border border-accent/35 bg-accent/15 px-4 py-2.5 font-chat-sans text-[15px] leading-relaxed tracking-[-0.01em] text-ink shadow-[0_1px_2px_rgba(73,184,214,0.10)] dark:border-accent/25 dark:bg-accent/10 sm:max-w-[75%]"
-              >
-                {m.text}
-              </div>
-            ) : (
-              <AgentTurn key={m.id} turn={m} live={m.id === liveTurnId} />
-            ),
-          )}
+          {groups.map((g, gi) => (
+            <article
+              key={g.key}
+              className={gi > 0 ? 'border-t border-ink/10 pt-9' : ''}
+            >
+              {g.user?.kind === 'user' && (
+                <header>
+                  <div className="font-mono text-micro uppercase tracking-label text-ink/45">
+                    <span className="tabular-nums">{String(g.n).padStart(2, '0')}</span>
+                    <span aria-hidden="true" className="mx-2 text-ink/30">//</span>
+                    <span>mission query</span>
+                  </div>
+                  <p className="m-0 mt-2.5 border-l-2 border-ink/70 pl-4 font-chat-sans text-[20px] font-medium leading-snug tracking-[-0.015em] text-ink sm:text-[24px]">
+                    {g.user.text}
+                  </p>
+                </header>
+              )}
+              {g.agents.map((a, ai) => (
+                <div key={a.id} className={g.user || ai > 0 ? 'mt-6' : ''}>
+                  <AgentTurn turn={a} live={a.id === liveTurnId} onApply={applyCommands} />
+                </div>
+              ))}
+            </article>
+          ))}
         </div>
       </div>
 
