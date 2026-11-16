@@ -59,11 +59,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
   )
   const chamberRef = useRef(chamber)
   chamberRef.current = chamber
-  // a previewed turn looks complete but its live answer is still in
-  // flight — keep the composer blocked until it commits, or a follow-up
-  // would read the pre-preview chamber state
-  const [awaitingLive, setAwaitingLive] = useState(false)
-  const busy = msgs.some((m) => m.kind === 'agent' && m.pending) || awaitingLive
+  const busy = msgs.some((m) => m.kind === 'agent' && m.pending)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -242,7 +238,12 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     ms: null,
   })
 
-  const sendTextRef = useRef<((text: string, display?: string, opts?: { suppressNav?: boolean }) => Promise<void>) | null>(null)
+  const sendTextRef = useRef<((text: string, display?: string, opts?: { suppressNav?: boolean; presetCommands?: SiSimulationCommands }) => Promise<void>) | null>(null)
+  // sends serialize through this tail: a follow-up fired while a preview
+  // still waits on its live answer reads chamberRef only after the live
+  // response commits — never the pre-preview state. The composer stays
+  // usable; the queued turn just starts its request late.
+  const tailRef = useRef<Promise<void>>(Promise.resolve())
   // mission envelopes in the deck above announce picks on the chamber bus
   // (__origin 'sim-deck'). Each pick becomes a real LLM turn: the preset's
   // chamber context is applied first so the copilot answers under the
@@ -258,8 +259,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         set_gravity_g: cmd.set_gravity_g ?? undefined,
         trigger_containment: cmd.trigger_containment ?? undefined,
       }
-      const nextChamber = mergeChamberState(chamberRef.current, sim)
-      commitChamber(nextChamber)
+      // don't commit the preset yet — the send queues behind any reply
+      // still in flight, and that reply's own commands would overwrite
+      // these settings before `sent` is captured. The preset travels with
+      // the prompt and is applied when this mission's turn starts.
       // several missions share an investigationId (apollo 1 & 11 → flare,
       // apollo 13 & 12 → same) — match the deck envelope by its own id
       const preset =
@@ -270,7 +273,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       void sendTextRef.current?.(
         preset?.prompt ?? `Analyze ${cmd.__investigation ?? cmd.load_preset ?? 'this mission'}.`,
         preset ? `Explore mission — ${preset.title}` : undefined,
-        { suppressNav: true },
+        { suppressNav: true, presetCommands: sim },
       )
     }
     window.addEventListener('ignis:ui-command', onDeckCommand)
@@ -278,90 +281,98 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presets])
 
-  const sendText = async (text: string, display?: string, opts?: { suppressNav?: boolean }) => {
+  const sendText = (text: string, display?: string, opts?: { suppressNav?: boolean; presetCommands?: SiSimulationCommands }) => {
     const uid = nid()
     const tid = nid()
     stickRef.current = true
     commitMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
-    const sent = chamberRef.current
-    // progressive answer: the deterministic local model is instant and
-    // grounded — show it when the copilot is slow (>8 s, e.g. a cold or
-    // busy gateway), then upgrade the same turn when the live answer
-    // lands. siChat itself resolves locally at its own timeout, so the
-    // turn always ends complete.
-    const live = siChat(text, sent)
-    const winner = await Promise.race([
-      live.then((r) => ({ r, provisional: false })),
-      new Promise<{ r: SiResponse; provisional: boolean }>((resolve) =>
-        window.setTimeout(
-          () => resolve({ r: synthesizeLocalSiResponse(text, sent), provisional: true }),
-          8000,
+    const mine = tailRef.current.then(async () => {
+      // a queued mission applies its envelope here — after the reply in
+      // flight committed, before this request captures its chamber
+      if (opts?.presetCommands) {
+        commitChamber(mergeChamberState(chamberRef.current, opts.presetCommands))
+      }
+      const sent = chamberRef.current
+      // progressive answer: the deterministic local model is instant and
+      // grounded — show it when the copilot is slow (>8 s, e.g. a cold or
+      // busy gateway), then upgrade the same turn when the live answer
+      // lands. siChat itself resolves locally at its own timeout, so the
+      // turn always ends complete.
+      const live = siChat(text, sent)
+      const winner = await Promise.race([
+        live.then((r) => ({ r, provisional: false })),
+        new Promise<{ r: SiResponse; provisional: boolean }>((resolve) =>
+          window.setTimeout(
+            () => resolve({ r: synthesizeLocalSiResponse(text, sent), provisional: true }),
+            8000,
+          ),
         ),
-      ),
-    ])
-    const res = winner.r ?? synthesizeLocalSiResponse(text, sent)
-    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
-    if (winner.provisional) {
-      setAwaitingLive(true)
-      try {
+      ])
+      const res = winner.r ?? synthesizeLocalSiResponse(text, sent)
+      applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
+      if (winner.provisional) {
         const later = await live
         // the final answer commits its commands once, merging onto the
         // original sent state (the preview never touched the chamber).
         // If the uplink failed outright, the preview becomes the answer
         // and its commands run like a normal offline turn.
         applyResponse(later ?? res, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
-      } finally {
-        setAwaitingLive(false)
       }
-    }
+    })
+    tailRef.current = mine.catch(() => {})
+    return mine
   }
   sendTextRef.current = sendText
 
-  const sendVoice = async (blob: Blob) => {
+  const sendVoice = (blob: Blob) => {
     const uid = nid()
     const tid = nid()
     stickRef.current = true
     // the pending turn doubles as the "listening / thinking" indicator
     commitMsgs((ms) => [...ms, pendingTurn(tid)])
     const t0 = performance.now()
-    const sent = chamberRef.current
-    const res = await siVoice(blob, sent)
-    const transcript = res?.transcript?.trim() || 'voice command'
-    // insert the transcribed user bubble right before the pending turn
-    commitMsgs((ms) => {
-      const out: ChatMsg[] = []
-      for (const m of ms) {
-        if (m.id === tid) out.push({ kind: 'user', id: uid, text: `◉ ${transcript}` })
-        out.push(m)
+    const mine = tailRef.current.then(async () => {
+      const sent = chamberRef.current
+      const res = await siVoice(blob, sent)
+      const transcript = res?.transcript?.trim() || 'voice command'
+      // insert the transcribed user bubble right before the pending turn
+      commitMsgs((ms) => {
+        const out: ChatMsg[] = []
+        for (const m of ms) {
+          if (m.id === tid) out.push({ kind: 'user', id: uid, text: `◉ ${transcript}` })
+          out.push(m)
+        }
+        return out
+      })
+      if (res) {
+        applyResponse(res, tid, performance.now() - t0, false, transcript, sent)
+      } else {
+        commitMsgs((ms) =>
+          ms.map((m) =>
+            m.id === tid
+              ? {
+                  kind: 'agent' as const,
+                  id: tid,
+                  pending: false,
+                  tools: [],
+                  briefing: 'Voice uplink failed — type or retry.',
+                  action: null,
+                  run: null,
+                  mode: 'offline-fallback',
+                  model: null,
+                  engine: null,
+                  riskIndex: null,
+                  evidence: [],
+                  ms: performance.now() - t0,
+                }
+              : m,
+          ),
+        )
       }
-      return out
     })
-    if (res) {
-      applyResponse(res, tid, performance.now() - t0, false, transcript, sent)
-    } else {
-      commitMsgs((ms) =>
-        ms.map((m) =>
-          m.id === tid
-            ? {
-                kind: 'agent' as const,
-                id: tid,
-                pending: false,
-                tools: [],
-                briefing: 'Voice uplink failed — type or retry.',
-                action: null,
-                run: null,
-                mode: 'offline-fallback',
-                model: null,
-                engine: null,
-                riskIndex: null,
-                evidence: [],
-                ms: performance.now() - t0,
-              }
-            : m,
-        ),
-      )
-    }
+    tailRef.current = mine.catch(() => {})
+    return mine
   }
 
   let liveTurnId = -1
