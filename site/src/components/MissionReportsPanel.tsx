@@ -9,6 +9,7 @@ import {
 import { missionMedia } from '../lib/missionMedia'
 import { navigate } from '../lib/scroll'
 import { emitSimulationCommands } from '../lib/simBus'
+import { GRAVITY_G } from '../lib/simConsole'
 import { cn } from '../lib/cn'
 import { HoverVideo } from './SimDeck'
 import './missionReports.css'
@@ -206,6 +207,7 @@ function EnvelopeChart({ env }: { env: GeneratedDashboard['spec']['safetyEnvelop
   const ih = H - p.t - p.b
   const X = (f: number) => p.l + (Math.max(0, Math.min(f, 30)) / 30) * iw
   const Y = (o: number) => p.t + ih - (Math.max(0, Math.min(o, 40)) / 40) * ih
+  const loc = env.locPct ?? LOC_MICROGRAVITY
   const zone = env.zone === 'runaway' ? 'var(--r-red)' : env.zone === 'safe' ? 'var(--r-green)' : 'var(--r-amber)'
   const cx = X(env.currentFlow)
   const cy = Y(env.currentO2)
@@ -225,13 +227,13 @@ function EnvelopeChart({ env }: { env: GeneratedDashboard['spec']['safetyEnvelop
           {f}
         </text>
       ))}
-      <rect x={p.l} y={Y(LOC_MICROGRAVITY)} width={iw} height={p.t + ih - Y(LOC_MICROGRAVITY)} rx="6" fill="var(--r-green)" opacity=".18" />
+      <rect x={p.l} y={Y(loc)} width={iw} height={p.t + ih - Y(loc)} rx="6" fill="var(--r-green)" opacity=".18" />
       <polygon
         points={`${X(0)},${Y(38)} ${X(5)},${Y(28)} ${X(12)},${Y(22)} ${X(30)},${Y(17)} ${X(30)},${Y(40)} ${X(0)},${Y(40)}`}
         fill="var(--r-red)"
         opacity=".15"
       />
-      <line x1={p.l} x2={p.l + iw} y1={Y(LOC_MICROGRAVITY)} y2={Y(LOC_MICROGRAVITY)} stroke="var(--r-green)" strokeOpacity=".7" strokeDasharray="4 4" />
+      <line x1={p.l} x2={p.l + iw} y1={Y(loc)} y2={Y(loc)} stroke="var(--r-green)" strokeOpacity=".7" strokeDasharray="4 4" />
       <text x={p.l + 10} y={p.t + ih - 10} fontSize="11" fontWeight="500" fill="var(--r-green)">
         Safe · below LOC
       </text>
@@ -258,14 +260,15 @@ function EnvelopeChart({ env }: { env: GeneratedDashboard['spec']['safetyEnvelop
 
 function EnvelopeTab({ report }: { report: GeneratedDashboard }) {
   const { safetyEnvelope: env, rubric } = report.spec
-  const margin = +(env.currentO2 - LOC_MICROGRAVITY).toFixed(1)
+  const loc = env.locPct ?? LOC_MICROGRAVITY
+  const margin = +(env.currentO2 - loc).toFixed(1)
   const over = margin > 0
   const zoneTone = env.zone === 'runaway' ? 'c-red' : env.zone === 'safe' ? 'c-green' : 'c-amber'
   const facts: Array<[string, ReactNode]> = [
     ['Zone', <span key="z" className={cn(zoneTone, 'capitalize')}>{env.zone}</span>],
     ['Operating point', `${env.currentO2}% O₂ · ${env.currentFlow} cm/s`],
     ['Pressure · gravity', `${rubric.summarize.pressureKpa} kPa · ${rubric.summarize.gravityRegime}`],
-    ['Microgravity LOC', `${LOC_MICROGRAVITY.toFixed(1)}% O₂`],
+    ['Material LOC', `${loc.toFixed(1)}% O₂`],
     ['Earth baseline LOC', `${LOC_EARTH.toFixed(1)}% O₂`],
     [
       'LOC margin',
@@ -446,7 +449,13 @@ export default function MissionReportsPanel() {
   const [regime, setRegime] = useState<Regime>('all')
 
   useEffect(() => {
-    const sync = () => setReports(getGeneratedDashboards())
+    const sync = (event: Event) => {
+      setReports(getGeneratedDashboards())
+      // a fresh live report takes focus — the run the operator just
+      // triggered should be what they see when they open the dashboard
+      const id = (event as CustomEvent<GeneratedDashboard>).detail?.id
+      if (id) setSelectedId(id)
+    }
     window.addEventListener('ignis:dashboard-generated', sync)
     return () => window.removeEventListener('ignis:dashboard-generated', sync)
   }, [])
@@ -460,7 +469,14 @@ export default function MissionReportsPanel() {
   const simulate = (r: GeneratedDashboard) => {
     const s = r.spec.rubric.summarize
     emitSimulationCommands(
-      { load_preset: s.investigationId, set_o2_percent: s.o2Pct, set_airflow_cm_s: s.flowCms },
+      {
+        load_preset: s.investigationId,
+        set_o2_percent: s.o2Pct,
+        set_airflow_cm_s: s.flowCms,
+        // reproduce the gravity the report was scored at — a lunar brief
+        // must run in lunar gravity, not the chamber default
+        set_gravity_g: GRAVITY_G[r.analysisScenario?.gravity ?? r.scenario?.gravity ?? 'microgravity'] ?? 0,
+      },
       'mission-brief',
       s.investigationId,
     )
@@ -486,7 +502,7 @@ export default function MissionReportsPanel() {
   return (
     <div className="rpt">
       <header className="hero">
-        <h2 id="run-matrix">Generated Mission Reports</h2>
+        <h2 id="mission-reports">Generated Mission Reports</h2>
         <p className="lede">Flight certification briefs built from NASA microgravity combustion data and the IGNIS physics core.</p>
         <div className="hero-row">
           <span className="pill-badge">
@@ -561,7 +577,10 @@ export default function MissionReportsPanel() {
               {tab === 'envelope' && <EnvelopeTab report={current} />}
               {tab === 'crew' && <CrewTab report={current} />}
             </div>
-            <p className="note" style={{ marginTop: '2rem' }}>IGNIS-REPORT-{shortId(current.id)}</p>
+            <p className="note" style={{ marginTop: '2rem' }}>
+              IGNIS-REPORT-{shortId(current.id)} ·{' '}
+              {SEED_IDS.has(current.id) ? 'curated demo brief' : `${current.response.mode} · ${current.response.model}`}
+            </p>
           </section>
         </>
       )}

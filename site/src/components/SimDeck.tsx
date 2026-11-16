@@ -161,7 +161,7 @@ const O2_MAX = 40
  *  The dot marks where this mission actually sits on the curve. */
 function RiskSpark({ preset }: { preset: MissionPreset }) {
   const { path, cx, cy } = useMemo(() => {
-    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 1)
+    const pts = riskCurveLocal(preset.materialId, preset.flowCms, preset.gravity, O2_MIN, O2_MAX, 2)
     const path = pts
       .map((p, i) => `${i === 0 ? 'M' : 'L'}${(((p.o2Pct - O2_MIN) / (O2_MAX - O2_MIN)) * 100).toFixed(1)},${(34 - p.riskIndex * 30).toFixed(1)}`)
       .join(' ')
@@ -178,77 +178,6 @@ function RiskSpark({ preset }: { preset: MissionPreset }) {
     <svg viewBox="0 0 100 36" aria-hidden="true" className="mt-4 block h-9 w-full overflow-visible">
       <path d={path} fill="none" stroke={preset.accent} strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
       <circle cx={cx} cy={cy} r="2.6" fill={preset.accent} stroke="var(--bg)" strokeWidth="1.2" />
-    </svg>
-  )
-}
-
-/** every preset's risk curve overlaid on one axis — the comparative N-run
- *  view: same fitted model, same sweep, one glance shows which missions
- *  sit where on the flammability surface. Hover highlights one curve. */
-function RiskCompare({ presets, activeId }: { presets: MissionPreset[]; activeId: string }) {
-  const [hover, setHover] = useState<string | null>(null)
-  const W = 560
-  const H = 150
-  const x = (o2: number) => ((o2 - O2_MIN) / (O2_MAX - O2_MIN)) * W
-  const y = (r: number) => H - 8 - r * (H - 20)
-  // sweep each preset once — hover/active styling must not recompute the model
-  const curves = useMemo(
-    () =>
-      presets.map((p) => {
-        const pts = riskCurveLocal(p.materialId, p.flowCms, p.gravity, O2_MIN, O2_MAX, 0.5)
-        const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${x(pt.o2Pct).toFixed(1)},${y(pt.riskIndex).toFixed(1)}`).join(' ')
-        const spot = pts.find((pt) => Math.abs(pt.o2Pct - p.o2Pct) < 1e-9)
-          ?? riskIndexLocal(p.materialId, p.o2Pct, p.flowCms, p.gravity)
-        return { id: p.id, accent: p.accent, name: splitTitle(p).name, d, cx: x(p.o2Pct), cy: y(spot.riskIndex), risk: spot.riskIndex }
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [presets],
-  )
-  // active curve draws last so it sits on top of the pile
-  const ordered = useMemo(
-    () =>
-      activeId
-        ? [...curves.filter((c) => c.id !== activeId), ...curves.filter((c) => c.id === activeId)]
-        : curves,
-    [curves, activeId],
-  )
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label="Risk versus oxygen percentage, one curve per mission"
-      className="block h-auto w-full overflow-visible"
-    >
-      {[0.25, 0.5, 0.75].map((g) => (
-        <line key={g} x1={0} x2={W} y1={y(g)} y2={y(g)} stroke="var(--ink)" strokeOpacity="0.08" strokeDasharray="3 5" />
-      ))}
-      {ordered.map((c) => {
-        const isActive = c.id === activeId
-        const dim = hover != null && hover !== c.id
-        return (
-          <g
-            key={c.id}
-            opacity={dim ? 0.18 : isActive ? 1 : 0.6}
-            pointerEvents="all"
-            style={{ transition: 'opacity 200ms', cursor: 'pointer' }}
-            tabIndex={0}
-            aria-label={`${c.name}: ${Math.round(c.risk * 100)}% risk`}
-            onPointerEnter={() => setHover(c.id)}
-            onPointerLeave={() => setHover(null)}
-            onFocus={() => setHover(c.id)}
-            onBlur={() => setHover(null)}
-          >
-            <title>{`${c.name}: ${Math.round(c.risk * 100)}% risk`}</title>
-            <path d={c.d} fill="none" stroke={c.accent} strokeWidth={isActive ? 3 : 1.8} strokeLinecap="round" />
-            <circle cx={c.cx} cy={c.cy} r={isActive ? 5 : 3.4} fill={c.accent} stroke="var(--bg)" strokeWidth="1.4" />
-          </g>
-        )
-      })}
-      {[10, 21, 34].map((o2) => (
-        <text key={o2} x={x(o2)} y={H - 4} fontSize="9" fill="var(--ink)" fillOpacity="0.45" textAnchor="middle" fontFamily="var(--font-mono, monospace)">
-          {o2}%
-        </text>
-      ))}
     </svg>
   )
 }
@@ -637,9 +566,6 @@ export default function SimDeck() {
             <span className="font-mono text-micro lowercase tracking-eyebrow opacity-50">
               live engine · tap to simulate
             </span>
-          </div>
-          <div className="mb-4 rounded-card border border-edge p-4 panel-85 shadow-sm backdrop-blur-xl sm:p-6">
-            <RiskCompare presets={MISSION_PRESETS} activeId={activeMission.id} />
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {[...MISSION_PRESETS]

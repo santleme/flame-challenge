@@ -9,6 +9,7 @@ import {
   type SiSimulationCommands,
 } from '../lib/api'
 import { emitSimulationCommands } from '../lib/simBus'
+import { analysisScenarioForResponse, generateDashboard } from '../lib/generatedDashboards'
 import { navigate } from '../lib/scroll'
 import {
   GRAVITY_G,
@@ -88,7 +89,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160
   }
 
-  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false) => {
+  const applyResponse = (res: SiResponse, turnId: number, ms: number, suppressNav = false, prompt = '', sent?: SiChamberState) => {
     const sim = res.simulation_commands ?? null
     const { tools, run } = toolCallsFromCommands(sim)
     // emit before setMsgs: the lazy LiveChamber mount peeks the pending
@@ -115,6 +116,17 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
           }
         : sim
       emitSimulationCommands(mergedSim, 'sim-console', nextChamber.investigationId ?? null)
+      // a run-triggering turn produces a mission report — the dashboard
+      // panel listens on 'ignis:dashboard-generated' and shows it as '· live'.
+      // scenario = post-command execution chamber; analysisScenario = the
+      // operating point res.chamber was actually scored at (commands may
+      // have retuned O₂/flow after scoring)
+      if (hasRunCondition) {
+        generateDashboard(
+          prompt, res, undefined, nextChamber,
+          analysisScenarioForResponse(res, sent ?? nextChamber),
+        )
+      }
       setChamber(nextChamber)
     }
     // when the copilot points somewhere (generated dashboards, a section),
@@ -132,6 +144,10 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
         navigate(target)
       }
     }
+    // never auto-navigate after generating a report: sim and dashboard
+    // are exclusive views, so leaving the deck would unmount the console
+    // and discard chat, chamber state and the running experiment. The
+    // turn's "view dashboards" link is the deliberate way over.
     setMsgs((ms2) =>
       ms2.map((m) =>
         m.id === turnId
@@ -213,10 +229,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     stickRef.current = true
     setMsgs((ms) => [...ms, { kind: 'user', id: uid, text: display ?? text }, pendingTurn(tid)])
     const t0 = performance.now()
+    const sent = chamberRef.current
     const res =
-      (await siChat(text, chamberRef.current)) ??
-      synthesizeLocalSiResponse(text, chamberRef.current)
-    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav)
+      (await siChat(text, sent)) ??
+      synthesizeLocalSiResponse(text, sent)
+    applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent)
   }
   sendTextRef.current = sendText
 
@@ -227,7 +244,8 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     // the pending turn doubles as the "listening / thinking" indicator
     setMsgs((ms) => [...ms, pendingTurn(tid)])
     const t0 = performance.now()
-    const res = await siVoice(blob, chamberRef.current)
+    const sent = chamberRef.current
+    const res = await siVoice(blob, sent)
     const transcript = res?.transcript?.trim() || 'voice command'
     // insert the transcribed user bubble right before the pending turn
     setMsgs((ms) => {
@@ -239,7 +257,7 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
       return out
     })
     if (res) {
-      applyResponse(res, tid, performance.now() - t0)
+      applyResponse(res, tid, performance.now() - t0, false, transcript, sent)
     } else {
       setMsgs((ms) =>
         ms.map((m) =>
