@@ -41,7 +41,11 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
   }))
   const chamberRef = useRef(chamber)
   chamberRef.current = chamber
-  const busy = msgs.some((m) => m.kind === 'agent' && m.pending)
+  // a previewed turn looks complete but its live answer is still in
+  // flight — keep the composer blocked until it commits, or a follow-up
+  // would read the pre-preview chamber state
+  const [awaitingLive, setAwaitingLive] = useState(false)
+  const busy = msgs.some((m) => m.kind === 'agent' && m.pending) || awaitingLive
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
@@ -160,10 +164,13 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
               kind: 'agent',
               id: turnId,
               pending: false,
-              tools,
+              // a preview claims nothing it hasn't done: tool rows and
+              // the run/dashboard link appear only once real commands
+              // were committed (the upgrade rewrites them below)
+              tools: provisional ? [] : tools,
               briefing: res.briefing,
               action: res.recommended_action || null,
-              run,
+              run: provisional ? null : run,
               mode: res.mode,
               model: res.model,
               engine: res.engine ?? null,
@@ -253,12 +260,17 @@ export default function SimConsole({ presets }: { presets: SimPreset[] }) {
     const res = winner.r ?? synthesizeLocalSiResponse(text, sent)
     applyResponse(res, tid, performance.now() - t0, opts?.suppressNav, text, sent, winner.provisional)
     if (winner.provisional) {
-      const later = await live
-      // the final answer commits its commands once, merging onto the
-      // original sent state (the preview never touched the chamber).
-      // If the uplink failed outright, the preview becomes the answer
-      // and its commands run like a normal offline turn.
-      applyResponse(later ?? res, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
+      setAwaitingLive(true)
+      try {
+        const later = await live
+        // the final answer commits its commands once, merging onto the
+        // original sent state (the preview never touched the chamber).
+        // If the uplink failed outright, the preview becomes the answer
+        // and its commands run like a normal offline turn.
+        applyResponse(later ?? res, tid, performance.now() - t0, opts?.suppressNav, text, sent, false)
+      } finally {
+        setAwaitingLive(false)
+      }
     }
   }
   sendTextRef.current = sendText
